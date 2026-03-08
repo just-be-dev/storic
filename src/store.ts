@@ -129,7 +129,7 @@ export interface StoreShape {
 // ─── Store service ───────────────────────────────────────────────────────────
 
 export class Store extends ServiceMap.Service<Store, StoreShape>()(
-  "nosql-sqlite/Store"
+  "datastore/Store"
 ) {
   /** Create a Store layer from a SqlClient layer. */
   static readonly layer: Layer.Layer<Store, SqlError, SqlClient | JsEvaluator> = Layer.effect(

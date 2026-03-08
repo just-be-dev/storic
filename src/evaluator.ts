@@ -25,7 +25,7 @@ interface JsEvaluatorShape {
 export class JsEvaluator extends ServiceMap.Service<
   JsEvaluator,
   JsEvaluatorShape
->()("nosql-sqlite/JsEvaluator") {
+>()("datastore/JsEvaluator") {
   /**
    * Default layer that uses `new Function` to evaluate JS expressions.
    * Suitable for Node.js, Bun, and other environments that support

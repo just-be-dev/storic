@@ -1,4 +1,4 @@
-# nosql-sqlite
+# datastore
 
 To install dependencies:
 
