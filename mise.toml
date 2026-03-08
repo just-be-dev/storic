@@ -21,4 +21,4 @@ run = "bun test"
 
 [tasks.example]
 description = "Run the example"
-run = "bun examples/example.ts"
+run = "bun examples/schema-versioning-with-lenses.ts"

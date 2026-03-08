@@ -17,7 +17,7 @@
     "test": "cd packages/core && bun test && cd ../cloudflare && bun test",
     "test:core": "cd packages/core && bun test",
     "test:cloudflare": "cd packages/cloudflare && bun test",
-    "example": "bun examples/example.ts"
+    "example": "bun examples/schema-versioning-with-lenses.ts"
   },
   "type": "module",
   "workspaces": [
