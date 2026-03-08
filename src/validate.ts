@@ -1,36 +1,43 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
+import { SchemaDefEvalError, ValidationError } from "./errors.ts";
 
-export type ValidationResult =
-  | { success: true }
-  | { success: false; message: string };
+/**
+ * Parse a schema definition string (e.g. `S.Struct({ name: S.String })`)
+ * into an Effect Schema. The `S` binding refers to `Schema` from "effect".
+ */
+export const parseSchema = (
+  def: string
+): Effect.Effect<Schema.Any, SchemaDefEvalError> =>
+  Effect.try({
+    try: () => {
+      // eslint-disable-next-line no-new-func
+      const fn = new Function("S", `return (${def})`);
+      return fn(Schema) as Schema.Any;
+    },
+    catch: (cause) =>
+      new SchemaDefEvalError({
+        reason: `Failed to evaluate schema def: ${cause}`,
+      }),
+  });
 
-function parseSchema(def: string): Schema.Any {
-  // eslint-disable-next-line no-new-func
-  const fn = new Function("S", `return (${def})`);
-  return fn(Schema);
-}
-
-export function validate(def: string, data: unknown): ValidationResult {
-  try {
-    const schema = parseSchema(def);
-    Schema.decodeUnknownSync(schema)(data);
-    return { success: true };
-  } catch (e) {
-    if (e instanceof Schema.SchemaError) {
-      return { success: false, message: e.message };
-    }
-    throw new Error(`Failed to evaluate schema def: ${e}`);
-  }
-}
-
-export function assertValid(def: string, data: unknown): void {
-  try {
-    const schema = parseSchema(def);
-    Schema.decodeUnknownSync(schema)(data);
-  } catch (e) {
-    if (e instanceof Schema.SchemaError) {
-      throw new Error(`Validation failed: ${e.message}`);
-    }
-    throw new Error(`Failed to evaluate schema def: ${e}`);
-  }
-}
+/**
+ * Validate `data` against a schema definition string.
+ * Succeeds with void, or fails with ValidationError | SchemaDefEvalError.
+ */
+export const validate = (
+  def: string,
+  data: unknown
+): Effect.Effect<void, ValidationError | SchemaDefEvalError> =>
+  Effect.gen(function* () {
+    const schema = yield* parseSchema(def);
+    yield* Effect.try({
+      try: () => Schema.decodeUnknownSync(schema)(data),
+      catch: (cause) =>
+        new ValidationError({
+          message:
+            cause instanceof Schema.SchemaError
+              ? cause.message
+              : `Validation failed: ${cause}`,
+        }),
+    });
+  });

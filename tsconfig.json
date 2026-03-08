@@ -10,7 +10,9 @@
     "declarationMap": true,
     "sourceMap": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "rewriteRelativeImportExtensions": true,
+    "types": ["bun-types"]
   },
   "include": ["src"]
 }

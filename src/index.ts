@@ -1,4 +1,13 @@
-export { Store } from "./store.js";
+export { Store } from "./store.ts";
+export type { StoreShape, StoreError } from "./store.ts";
+export {
+  SchemaNotFoundError,
+  EntityNotFoundError,
+  ValidationError,
+  LensPathNotFoundError,
+  SchemaDefEvalError,
+  TransformError,
+} from "./errors.ts";
 export type {
   Schema,
   Lens,
@@ -10,6 +19,6 @@ export type {
   GetEntityOptions,
   ListEntitiesOptions,
   RegisterLensOptions,
-} from "./types.js";
-export { validate, assertValid } from "./validate.js";
-export { hashDef } from "./hash.js";
+} from "./types.ts";
+export { validate, parseSchema } from "./validate.ts";
+export { hashDef } from "./hash.ts";

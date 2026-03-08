@@ -1,4 +1,4 @@
-import type { Lens, PathStep, ReachabilityRow } from "./types.js";
+import type { Lens, PathStep, ReachabilityRow } from "./types.ts";
 
 type Edge = { to: string; lensId: string; direction: "forward" | "backward" };
 

@@ -10,14 +10,14 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "engines": {
-    "node": ">=22.5.0"
-  },
   "scripts": {
-    "build": "tsc",
-    "example": "node --experimental-sqlite dist/example.js"
+    "build": "bun run tsc",
+    "check": "bun run tsc --noEmit",
+    "example": "bun src/example.ts"
   },
   "dependencies": {
+    "@effect/platform-bun": "4.0.0-beta.29",
+    "@effect/sql-sqlite-bun": "4.0.0-beta.29",
     "effect": "^4.0.0-beta.29"
   },
   "devDependencies": {
