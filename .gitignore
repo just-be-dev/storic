@@ -1,9 +1,11 @@
 # dependencies (bun install)
 node_modules
+packages/*/node_modules
 
 # output
 out
 dist
+packages/*/dist
 *.tgz
 
 # code coverage
@@ -26,9 +28,14 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .eslintcache
 .cache
 *.tsbuildinfo
+packages/*/*.tsbuildinfo
 
 # IntelliJ based IDEs
 .idea
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# Cloudflare
+.wrangler/
+worker-configuration.d.ts

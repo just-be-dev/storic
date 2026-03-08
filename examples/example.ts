@@ -1,7 +1,7 @@
 import { Console, Effect, Layer } from "effect";
 import { BunRuntime } from "@effect/platform-bun";
 import { layer as sqliteLayer } from "@effect/sql-sqlite-bun/SqliteClient";
-import { Store, JsEvaluator } from "../src/index.ts";
+import { Store, JsEvaluator } from "../packages/core/src/index.ts";
 
 // ─── Layer setup ──────────────────────────────────────────────────────────────
 
