@@ -1,12 +1,14 @@
 import { Console, Effect, Layer } from "effect";
 import { BunRuntime } from "@effect/platform-bun";
 import { layer as sqliteLayer } from "@effect/sql-sqlite-bun/SqliteClient";
-import { Store } from "./index.ts";
+import { Store, JsEvaluator } from "../src/index.ts";
 
 // ─── Layer setup ──────────────────────────────────────────────────────────────
 
 const SqlLive = sqliteLayer({ filename: ":memory:" });
-const StoreLive = Store.layer.pipe(Layer.provide(SqlLive));
+const StoreLive = Store.layer.pipe(
+  Layer.provide(Layer.mergeAll(SqlLive, JsEvaluator.Eval)),
+);
 
 // ─── Main program ─────────────────────────────────────────────────────────────
 
@@ -16,12 +18,12 @@ const program = Effect.gen(function* () {
   // ── 1. Register schemas (id = SHA256 of def) ───────────────────────────
   const userV1 = yield* store.registerSchema(
     "User",
-    `S.Struct({ firstName: S.String, lastName: S.String, email: S.String })`
+    `S.Struct({ firstName: S.String, lastName: S.String, email: S.String })`,
   );
 
   const userV2 = yield* store.registerSchema(
     "User",
-    `S.Struct({ fullName: S.String, email: S.String })`
+    `S.Struct({ fullName: S.String, email: S.String })`,
   );
 
   yield* Console.log("V1:", userV1.id.slice(0, 12), "…");
@@ -72,7 +74,7 @@ const program = Effect.gen(function* () {
   yield* store.updateEntity(
     alice.id,
     { email: "alice2@example.com" },
-    { mode: "merge" }
+    { mode: "merge" },
   );
   const aliceUpdated = yield* store.getEntity(alice.id);
   yield* Console.log("\nAlice after merge update:", aliceUpdated.data);

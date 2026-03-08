@@ -22,3 +22,4 @@ export type {
 } from "./types.ts";
 export { validate, parseSchema } from "./validate.ts";
 export { hashDef } from "./hash.ts";
+export { JsEvaluator } from "./evaluator.ts";

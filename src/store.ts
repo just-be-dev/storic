@@ -4,6 +4,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { hashDef, generateId } from "./hash.ts";
 import { computeTransitiveClosure } from "./closure.ts";
 import { applyLensChain } from "./transform.ts";
+import { JsEvaluator } from "./evaluator.ts";
 import { validate } from "./validate.ts";
 import {
   SchemaNotFoundError,
@@ -26,8 +27,6 @@ import type {
 } from "./types.ts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const now = (): number => Math.floor(Date.now() / 1000);
 
 const deserializeEntity = (row: Record<string, unknown>): Entity => ({
   id: row.id as string,
@@ -133,10 +132,11 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
   "nosql-sqlite/Store"
 ) {
   /** Create a Store layer from a SqlClient layer. */
-  static readonly layer: Layer.Layer<Store, SqlError, SqlClient> = Layer.effect(
+  static readonly layer: Layer.Layer<Store, SqlError, SqlClient | JsEvaluator> = Layer.effect(
     Store,
     Effect.gen(function* () {
       const sql = yield* SqlClient;
+      const jsEvaluator = yield* JsEvaluator;
 
       // ── DDL migration ───────────────────────────────────────────────
       yield* sql.unsafe(`
@@ -169,8 +169,8 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
           id         TEXT PRIMARY KEY,
           schema_id  TEXT NOT NULL REFERENCES schemas(id),
           data       JSON NOT NULL DEFAULT '{}',
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch())
         )
       `);
       yield* sql.unsafe(`
@@ -263,10 +263,9 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
           }
           if (path.length === 0) return entity.data;
           const lm = yield* getLensMap();
-          return (yield* applyLensChain(path, lm, entity.data)) as Record<
-            string,
-            unknown
-          >;
+          return (yield* applyLensChain(path, lm, entity.data).pipe(
+            Effect.provideService(JsEvaluator, jsEvaluator)
+          )) as Record<string, unknown>;
         });
 
       // ── Service implementation ──────────────────────────────────────
@@ -330,24 +329,20 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
           const schema = yield* getSchemaById(schemaId);
 
           if (opts.validate !== false) {
-            yield* validate(schema.def, data);
+            yield* validate(schema.def, data).pipe(
+              Effect.provideService(JsEvaluator, jsEvaluator)
+            );
           }
 
           const id = opts.id ?? generateId();
-          const ts = now();
 
-          yield* sql`
-            INSERT INTO entities (id, schema_id, data, created_at, updated_at)
-            VALUES (${id}, ${schemaId}, ${JSON.stringify(data)}, ${ts}, ${ts})
+          const rows = yield* sql<Record<string, unknown>>`
+            INSERT INTO entities (id, schema_id, data)
+            VALUES (${id}, ${schemaId}, ${JSON.stringify(data)})
+            RETURNING *
           `;
 
-          return {
-            id,
-            schema_id: schemaId,
-            data,
-            created_at: ts,
-            updated_at: ts,
-          } satisfies Entity;
+          return deserializeEntity(rows[0]);
         });
 
       const getEntity = (
@@ -401,13 +396,19 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
 
           if (opts.validate !== false) {
             const schema = yield* getSchemaById(existing.schema_id);
-            yield* validate(schema.def, newData);
+            yield* validate(schema.def, newData).pipe(
+              Effect.provideService(JsEvaluator, jsEvaluator)
+            );
           }
 
-          const ts = now();
-          yield* sql`UPDATE entities SET data = ${JSON.stringify(newData)}, updated_at = ${ts} WHERE id = ${id}`;
+          const updated = yield* sql<Record<string, unknown>>`
+            UPDATE entities
+            SET data = ${JSON.stringify(newData)}, updated_at = unixepoch()
+            WHERE id = ${id}
+            RETURNING *
+          `;
 
-          return { ...existing, data: newData, updated_at: ts };
+          return deserializeEntity(updated[0]);
         });
 
       const deleteEntity = (id: string): Effect.Effect<void, SqlError> =>

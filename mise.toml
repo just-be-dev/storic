@@ -15,6 +15,10 @@ _.path = "node_modules/.bin"
 description = "Build the project"
 run = "tsc"
 
+[tasks.test]
+description = "Run tests"
+run = "bun test"
+
 [tasks.example]
 description = "Run the example"
-run = "node --experimental-sqlite dist/example.js"
+run = "bun examples/example.ts"
