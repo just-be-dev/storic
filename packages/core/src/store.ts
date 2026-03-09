@@ -1,491 +1,419 @@
-import { Effect, Layer, ServiceMap } from "effect";
+import { Effect, Layer, Schema, ServiceMap } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
-import { hashDef, generateId } from "./hash.ts";
-import { computeTransitiveClosure } from "./closure.ts";
-import { applyLensChain } from "./transform.ts";
-import { JsEvaluator } from "./evaluator.ts";
-import { validate } from "./validate.ts";
 import {
-  SchemaNotFoundError,
   EntityNotFoundError,
   LensPathNotFoundError,
-  ValidationError,
-  SchemaDefEvalError,
   TransformError,
+  ValidationError,
 } from "./errors.ts";
+import { syncIndexes } from "./index-sync.ts";
+import { SchemaRegistry, getTag } from "./schema-registry.ts";
 import type {
-  Schema,
-  Lens,
-  Entity,
-  PathStep,
+  AnyTaggedStruct,
+  EntityRecord,
+  LensPath,
+  StoreConfig,
   UpdateMode,
-  CreateEntityOptions,
-  GetEntityOptions,
-  ListEntitiesOptions,
-  RegisterLensOptions,
 } from "./types.ts";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Internal validation helper ─────────────────────────────────────────────
 
-const deserializeEntity = (row: Record<string, unknown>): Entity => ({
-  id: row.id as string,
-  schema_id: row.schema_id as string,
-  data: JSON.parse(row.data as string),
-  created_at: row.created_at as number,
-  updated_at: row.updated_at as number,
-});
+/**
+ * Validate data against a schema using decodeUnknownSync.
+ * Casts internally to avoid DecodingServices constraint on generics.
+ */
+function validateSync(schema: AnyTaggedStruct, data: unknown): void {
+  const decode = Schema.decodeUnknownSync(schema as any);
+  decode(data);
+}
 
-// ─── Store errors (union of all possible errors) ─────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+const generateId = (): string => crypto.randomUUID();
+
+/** Parse a DB row into an EntityRecord. */
+function deserializeRow<T extends AnyTaggedStruct>(
+  row: Record<string, unknown>,
+): EntityRecord<T> {
+  return {
+    id: row.id as string,
+    data: JSON.parse(row.data as string) as Schema.Schema.Type<T>,
+    created_at: row.created_at as number,
+    updated_at: row.updated_at as number,
+  };
+}
+
+/**
+ * Apply a lens path to transform data from one schema version to another.
+ */
+function applyLensPath(
+  path: LensPath,
+  data: unknown,
+): Effect.Effect<unknown, TransformError> {
+  return Effect.gen(function* () {
+    let current = data;
+
+    for (const step of path.steps) {
+      try {
+        current = step.transform(current);
+      } catch (error) {
+        return yield* new TransformError({
+          reason: `Failed to transform from ${step.fromTag} to ${step.toTag}: ${error}`,
+        });
+      }
+    }
+
+    return current;
+  });
+}
+
+// ─── Store Error Union ──────────────────────────────────────────────────────
 
 export type StoreError =
-  | SchemaNotFoundError
   | EntityNotFoundError
   | LensPathNotFoundError
   | ValidationError
-  | SchemaDefEvalError
   | TransformError
   | SqlError;
 
-// ─── Store service shape ─────────────────────────────────────────────────────
+// ─── Store Service Shape ────────────────────────────────────────────────────
 
 export interface StoreShape {
-  // Schema operations
-  readonly registerSchema: (
-    name: string,
-    def: string
-  ) => Effect.Effect<Schema, SqlError>;
+  /** Save an entity. The `_tag` field is added automatically. */
+  readonly saveEntity: <T extends AnyTaggedStruct>(
+    schema: T,
+    data: Omit<Schema.Schema.Type<T>, "_tag">,
+    opts?: { readonly id?: string },
+  ) => Effect.Effect<EntityRecord<T>, ValidationError | SqlError>;
 
-  readonly getSchema: (
-    id: string
-  ) => Effect.Effect<Schema, SchemaNotFoundError | SqlError>;
-
-  readonly listSchemas: () => Effect.Effect<Schema[], SqlError>;
-
-  // Lens operations
-  readonly registerLens: (
-    opts: RegisterLensOptions
-  ) => Effect.Effect<Lens, SqlError>;
-
-  readonly getLens: (
-    id: string
-  ) => Effect.Effect<Lens | undefined, SqlError>;
-
-  readonly listLenses: () => Effect.Effect<Lens[], SqlError>;
-
-  // Entity operations
-  readonly createEntity: (
-    schemaId: string,
-    data: Record<string, unknown>,
-    opts?: CreateEntityOptions
-  ) => Effect.Effect<
-    Entity,
-    SchemaNotFoundError | ValidationError | SchemaDefEvalError | SqlError
-  >;
-
-  readonly getEntity: (
+  /** Load a single entity by ID, projected to the given schema version. */
+  readonly loadEntity: <T extends AnyTaggedStruct>(
+    schema: T,
     id: string,
-    opts?: GetEntityOptions
   ) => Effect.Effect<
-    Entity,
+    EntityRecord<T>,
     EntityNotFoundError | LensPathNotFoundError | TransformError | SqlError
   >;
 
-  readonly updateEntity: (
-    id: string,
-    data: Record<string, unknown>,
-    opts?: { mode?: UpdateMode; validate?: boolean }
+  /**
+   * Load all entities of a schema type, including connected versions
+   * auto-converted via lenses.
+   */
+  readonly loadEntities: <T extends AnyTaggedStruct>(
+    schema: T,
+    opts?: { readonly limit?: number; readonly offset?: number },
   ) => Effect.Effect<
-    Entity,
-    | EntityNotFoundError
-    | SchemaNotFoundError
-    | ValidationError
-    | SchemaDefEvalError
-    | SqlError
-  >;
-
-  readonly deleteEntity: (id: string) => Effect.Effect<void, SqlError>;
-
-  readonly listEntities: (
-    schemaId: string,
-    opts?: ListEntitiesOptions
-  ) => Effect.Effect<
-    Entity[],
+    Array<EntityRecord<T>>,
     LensPathNotFoundError | TransformError | SqlError
   >;
 
-  // Index operations
-  readonly createIndex: (
-    indexName: string,
-    jsonPath: string,
-    tableName?: string
+  /** Update an entity's data. */
+  readonly updateEntity: <T extends AnyTaggedStruct>(
+    schema: T,
+    id: string,
+    data: Partial<Omit<Schema.Schema.Type<T>, "_tag">>,
+    opts?: { readonly mode?: UpdateMode },
+  ) => Effect.Effect<
+    EntityRecord<T>,
+    | EntityNotFoundError
+    | LensPathNotFoundError
+    | TransformError
+    | ValidationError
+    | SqlError
+  >;
+
+  /** Delete an entity by ID. */
+  readonly deleteEntity: (
+    id: string,
   ) => Effect.Effect<void, SqlError>;
-
-  readonly dropIndex: (indexName: string) => Effect.Effect<void, SqlError>;
-
-  readonly listIndexes: () => Effect.Effect<string[], SqlError>;
 }
 
-// ─── Store service ───────────────────────────────────────────────────────────
+// ─── Store Service ──────────────────────────────────────────────────────────
 
 export class Store extends ServiceMap.Service<Store, StoreShape>()(
-  "datastore/Store"
+  "datastore/Store",
 ) {
-  /** Create a Store layer from a SqlClient layer. */
-  static readonly layer: Layer.Layer<Store, SqlError, SqlClient | JsEvaluator> = Layer.effect(
-    Store,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient;
-      const jsEvaluator = yield* JsEvaluator;
+  /**
+   * Create a Store layer from a StoreConfig and a SqlClient.
+   *
+   * On initialization:
+   * 1. Creates the `entities` table (if not exists)
+   * 2. Builds the schema registry and lens graph
+   * 3. Auto-syncs indexes from schema annotations
+   */
+  static readonly layer = (
+    config: StoreConfig,
+  ): Layer.Layer<Store, SqlError, SqlClient> =>
+    Layer.effect(
+      Store,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient;
 
-      // ── DDL migration ───────────────────────────────────────────────
-      yield* sql.unsafe(`
-        CREATE TABLE IF NOT EXISTS schemas (
-          id   TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          def  TEXT NOT NULL
-        )
-      `);
-      yield* sql.unsafe(`
-        CREATE TABLE IF NOT EXISTS lenses (
-          id          TEXT PRIMARY KEY,
-          from_schema TEXT NOT NULL REFERENCES schemas(id),
-          to_schema   TEXT NOT NULL REFERENCES schemas(id),
-          forward     TEXT NOT NULL,
-          backward    TEXT NOT NULL,
-          UNIQUE (from_schema, to_schema)
-        )
-      `);
-      yield* sql.unsafe(`
-        CREATE TABLE IF NOT EXISTS schema_reachability (
-          from_schema TEXT NOT NULL REFERENCES schemas(id),
-          to_schema   TEXT NOT NULL REFERENCES schemas(id),
-          path        TEXT NOT NULL,
-          PRIMARY KEY (from_schema, to_schema)
-        )
-      `);
-      yield* sql.unsafe(`
-        CREATE TABLE IF NOT EXISTS entities (
-          id         TEXT PRIMARY KEY,
-          schema_id  TEXT NOT NULL REFERENCES schemas(id),
-          data       JSON NOT NULL DEFAULT '{}',
-          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-          updated_at INTEGER NOT NULL DEFAULT (unixepoch())
-        )
-      `);
-      yield* sql.unsafe(`
-        CREATE INDEX IF NOT EXISTS idx_entities_schema
-          ON entities(schema_id)
-      `);
+        // ── DDL ─────────────────────────────────────────────────────────
+        yield* sql.unsafe(`
+          CREATE TABLE IF NOT EXISTS entities (
+            id         TEXT PRIMARY KEY,
+            type       TEXT NOT NULL,
+            data       JSON NOT NULL,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+          )
+        `);
+        yield* sql.unsafe(`
+          CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type)
+        `);
 
-      // ── Internal helpers ────────────────────────────────────────────
+        // ── Schema Registry ─────────────────────────────────────────────
+        const registry = new SchemaRegistry(config);
 
-      const getSchemaById = (
-        id: string
-      ): Effect.Effect<Schema, SchemaNotFoundError | SqlError> =>
-        Effect.gen(function* () {
-          const rows = yield* sql<Schema>`SELECT * FROM schemas WHERE id = ${id}`;
-          if (rows.length === 0) {
-            return yield* new SchemaNotFoundError({ schemaId: id });
-          }
-          return rows[0];
-        });
+        // ── Auto-sync indexes ───────────────────────────────────────────
+        yield* syncIndexes(registry);
 
-      const listAllLenses = (): Effect.Effect<Lens[], SqlError> =>
-        Effect.map(sql<Lens>`SELECT * FROM lenses`, (rows) => [...rows]);
+        // ── Implementation ──────────────────────────────────────────────
 
-      const rebuildReachability = (): Effect.Effect<void, SqlError> =>
-        Effect.gen(function* () {
-          const lenses = yield* listAllLenses();
-          const reachRows = computeTransitiveClosure(lenses);
+        const saveEntity = <T extends AnyTaggedStruct>(
+          schema: T,
+          data: Omit<Schema.Schema.Type<T>, "_tag">,
+          opts?: { readonly id?: string },
+        ): Effect.Effect<EntityRecord<T>, ValidationError | SqlError> =>
+          Effect.gen(function* () {
+            const tag = getTag(schema);
+            const fullData = { _tag: tag, ...data } as unknown as Schema.Schema.Type<T>;
 
-          yield* sql.unsafe(`DELETE FROM schema_reachability`);
-
-          for (const row of reachRows) {
-            yield* sql`
-              INSERT OR REPLACE INTO schema_reachability (from_schema, to_schema, path)
-              VALUES (${row.from_schema}, ${row.to_schema}, ${JSON.stringify(row.path)})
-            `;
-          }
-        });
-
-      const getLensMap = (): Effect.Effect<
-        Map<string, { forward: string; backward: string }>,
-        SqlError
-      > =>
-        Effect.gen(function* () {
-          const lenses = yield* listAllLenses();
-          return new Map(
-            lenses.map((l) => [
-              l.id,
-              { forward: l.forward, backward: l.backward },
-            ])
-          );
-        });
-
-      const getPath = (
-        fromSchema: string,
-        toSchema: string
-      ): Effect.Effect<PathStep[] | null, SqlError> =>
-        Effect.gen(function* () {
-          if (fromSchema === toSchema) return [];
-          const rows = yield* sql<{
-            path: string;
-          }>`SELECT path FROM schema_reachability WHERE from_schema = ${fromSchema} AND to_schema = ${toSchema}`;
-          if (rows.length === 0) return null;
-          return JSON.parse(rows[0].path) as PathStep[];
-        });
-
-      const getAllSourceSchemas = (
-        targetSchema: string
-      ): Effect.Effect<string[], SqlError> =>
-        Effect.gen(function* () {
-          const rows = yield* sql<{
-            from_schema: string;
-          }>`SELECT from_schema FROM schema_reachability WHERE to_schema = ${targetSchema}`;
-          return [targetSchema, ...rows.map((r) => r.from_schema)];
-        });
-
-      const project = (
-        entity: Entity,
-        targetSchemaId: string
-      ): Effect.Effect<
-        Record<string, unknown>,
-        LensPathNotFoundError | TransformError | SqlError
-      > =>
-        Effect.gen(function* () {
-          const path = yield* getPath(entity.schema_id, targetSchemaId);
-          if (path === null) {
-            return yield* new LensPathNotFoundError({
-              fromSchema: entity.schema_id,
-              toSchema: targetSchemaId,
-            });
-          }
-          if (path.length === 0) return entity.data;
-          const lm = yield* getLensMap();
-          return (yield* applyLensChain(path, lm, entity.data).pipe(
-            Effect.provideService(JsEvaluator, jsEvaluator)
-          )) as Record<string, unknown>;
-        });
-
-      // ── Service implementation ──────────────────────────────────────
-
-      const registerSchema = (
-        name: string,
-        def: string
-      ): Effect.Effect<Schema, SqlError> =>
-        Effect.gen(function* () {
-          const trimmed = def.trim();
-          const id = hashDef(trimmed);
-          yield* sql`INSERT OR IGNORE INTO schemas (id, name, def) VALUES (${id}, ${name}, ${trimmed})`;
-          return { id, name, def: trimmed } satisfies Schema;
-        });
-
-      const registerLens = (
-        opts: RegisterLensOptions
-      ): Effect.Effect<Lens, SqlError> =>
-        Effect.gen(function* () {
-          const existing = yield* sql<Lens>`SELECT * FROM lenses WHERE from_schema = ${opts.from} AND to_schema = ${opts.to}`;
-          if (existing.length > 0) return existing[0];
-
-          const id = generateId();
-
-          yield* sql.withTransaction(
-            Effect.gen(function* () {
-              yield* sql`
-                INSERT INTO lenses (id, from_schema, to_schema, forward, backward)
-                VALUES (${id}, ${opts.from}, ${opts.to}, ${opts.forward}, ${opts.backward})
-              `;
-              yield* rebuildReachability();
-            })
-          );
-
-          return {
-            id,
-            from_schema: opts.from,
-            to_schema: opts.to,
-            forward: opts.forward,
-            backward: opts.backward,
-          } satisfies Lens;
-        });
-
-      const getLensById = (
-        id: string
-      ): Effect.Effect<Lens | undefined, SqlError> =>
-        Effect.gen(function* () {
-          const rows = yield* sql<Lens>`SELECT * FROM lenses WHERE id = ${id}`;
-          return rows.length > 0 ? rows[0] : undefined;
-        });
-
-      const createEntity = (
-        schemaId: string,
-        data: Record<string, unknown>,
-        opts: CreateEntityOptions = {}
-      ): Effect.Effect<
-        Entity,
-        SchemaNotFoundError | ValidationError | SchemaDefEvalError | SqlError
-      > =>
-        Effect.gen(function* () {
-          const schema = yield* getSchemaById(schemaId);
-
-          if (opts.validate !== false) {
-            yield* validate(schema.def, data).pipe(
-              Effect.provideService(JsEvaluator, jsEvaluator)
-            );
-          }
-
-          const id = opts.id ?? generateId();
-
-          const rows = yield* sql<Record<string, unknown>>`
-            INSERT INTO entities (id, schema_id, data)
-            VALUES (${id}, ${schemaId}, ${JSON.stringify(data)})
-            RETURNING *
-          `;
-
-          return deserializeEntity(rows[0]);
-        });
-
-      const getEntity = (
-        id: string,
-        opts: GetEntityOptions = {}
-      ): Effect.Effect<
-        Entity,
-        EntityNotFoundError | LensPathNotFoundError | TransformError | SqlError
-      > =>
-        Effect.gen(function* () {
-          const rows = yield* sql<
-            Record<string, unknown>
-          >`SELECT * FROM entities WHERE id = ${id}`;
-          if (rows.length === 0) {
-            return yield* new EntityNotFoundError({ entityId: id });
-          }
-
-          const entity = deserializeEntity(rows[0]);
-
-          if (opts.as && opts.as !== entity.schema_id) {
-            entity.data = yield* project(entity, opts.as);
-          }
-
-          return entity;
-        });
-
-      const updateEntity = (
-        id: string,
-        data: Record<string, unknown>,
-        opts: { mode?: UpdateMode; validate?: boolean } = {}
-      ): Effect.Effect<
-        Entity,
-        | EntityNotFoundError
-        | SchemaNotFoundError
-        | ValidationError
-        | SchemaDefEvalError
-        | SqlError
-      > =>
-        Effect.gen(function* () {
-          const rows = yield* sql<
-            Record<string, unknown>
-          >`SELECT * FROM entities WHERE id = ${id}`;
-          if (rows.length === 0) {
-            return yield* new EntityNotFoundError({ entityId: id });
-          }
-
-          const existing = deserializeEntity(rows[0]);
-          const mode = opts.mode ?? "merge";
-          const newData =
-            mode === "merge" ? { ...existing.data, ...data } : data;
-
-          if (opts.validate !== false) {
-            const schema = yield* getSchemaById(existing.schema_id);
-            yield* validate(schema.def, newData).pipe(
-              Effect.provideService(JsEvaluator, jsEvaluator)
-            );
-          }
-
-          const updated = yield* sql<Record<string, unknown>>`
-            UPDATE entities
-            SET data = ${JSON.stringify(newData)}, updated_at = unixepoch()
-            WHERE id = ${id}
-            RETURNING *
-          `;
-
-          return deserializeEntity(updated[0]);
-        });
-
-      const deleteEntity = (id: string): Effect.Effect<void, SqlError> =>
-        Effect.gen(function* () {
-          yield* sql`DELETE FROM entities WHERE id = ${id}`;
-        });
-
-      const listEntities = (
-        schemaId: string,
-        opts: ListEntitiesOptions = {}
-      ): Effect.Effect<
-        Entity[],
-        LensPathNotFoundError | TransformError | SqlError
-      > =>
-        Effect.gen(function* () {
-          const sourceSchemas = yield* getAllSourceSchemas(schemaId);
-
-          const rows = yield* sql<
-            Record<string, unknown>
-          >`SELECT * FROM entities WHERE schema_id IN ${sql.in(sourceSchemas)}`;
-
-          const targetSchema = opts.as ?? schemaId;
-          const entities: Entity[] = [];
-
-          for (const row of rows) {
-            const entity = deserializeEntity(row);
-            if (entity.schema_id !== targetSchema) {
-              entity.data = yield* project(entity, targetSchema);
+            // Validate using the schema
+            try {
+              validateSync(schema, fullData);
+            } catch (error) {
+              return yield* new ValidationError({
+                message: `Validation failed for ${tag}: ${error}`,
+              });
             }
-            entities.push(entity);
-          }
 
-          return entities;
+            const id = opts?.id ?? generateId();
+
+            yield* sql`
+              INSERT INTO entities (id, type, data)
+              VALUES (${id}, ${tag}, ${JSON.stringify(fullData)})
+            `;
+
+            const rows = yield* sql<
+              Record<string, unknown>
+            >`SELECT * FROM entities WHERE id = ${id}`;
+
+            return deserializeRow<T>(rows[0]);
+          });
+
+        const loadEntity = <T extends AnyTaggedStruct>(
+          schema: T,
+          id: string,
+        ): Effect.Effect<
+          EntityRecord<T>,
+          | EntityNotFoundError
+          | LensPathNotFoundError
+          | TransformError
+          | SqlError
+        > =>
+          Effect.gen(function* () {
+            const rows = yield* sql<
+              Record<string, unknown>
+            >`SELECT * FROM entities WHERE id = ${id}`;
+
+            if (rows.length === 0) {
+              return yield* new EntityNotFoundError({
+                entityId: id,
+                message: `Entity not found: ${id}`,
+              });
+            }
+
+            const row = rows[0];
+            const targetTag = getTag(schema);
+            const storedType = row.type as string;
+            const parsed = JSON.parse(row.data as string);
+
+            let converted: Schema.Schema.Type<T>;
+            if (storedType === targetTag) {
+              converted = parsed;
+            } else {
+              const path = registry.getPath(storedType, targetTag);
+              if (!path) {
+                return yield* new LensPathNotFoundError({
+                  fromType: storedType,
+                  toType: targetTag,
+                  message: `No lens path from ${storedType} to ${targetTag}`,
+                });
+              }
+              converted = (yield* applyLensPath(
+                path,
+                parsed,
+              )) as Schema.Schema.Type<T>;
+            }
+
+            return {
+              id: row.id as string,
+              data: converted,
+              created_at: row.created_at as number,
+              updated_at: row.updated_at as number,
+            };
+          });
+
+        const loadEntities = <T extends AnyTaggedStruct>(
+          schema: T,
+          opts?: { readonly limit?: number; readonly offset?: number },
+        ): Effect.Effect<
+          Array<EntityRecord<T>>,
+          LensPathNotFoundError | TransformError | SqlError
+        > =>
+          Effect.gen(function* () {
+            const targetTag = getTag(schema);
+
+            // Get all tags connected via lenses
+            const connectedTags = registry.getConnectedTags(targetTag);
+
+            // Query for all connected types
+            const rows = yield* sql<Record<string, unknown>>`
+              SELECT * FROM entities
+              WHERE type IN ${sql.in(connectedTags)}
+              ORDER BY created_at DESC
+              ${opts?.limit != null ? sql.unsafe(`LIMIT ${opts.limit}`) : sql.unsafe("")}
+              ${opts?.offset != null ? sql.unsafe(`OFFSET ${opts.offset}`) : sql.unsafe("")}
+            `;
+
+            // Transform each row to the target schema
+            const results: Array<EntityRecord<T>> = [];
+
+            for (const row of rows) {
+              const storedType = row.type as string;
+              const parsed = JSON.parse(row.data as string);
+
+              let converted: Schema.Schema.Type<T>;
+              if (storedType === targetTag) {
+                converted = parsed;
+              } else {
+                const path = registry.getPath(storedType, targetTag);
+                if (!path) {
+                  return yield* new LensPathNotFoundError({
+                    fromType: storedType,
+                    toType: targetTag,
+                    message: `No lens path from ${storedType} to ${targetTag}`,
+                  });
+                }
+                converted = (yield* applyLensPath(
+                  path,
+                  parsed,
+                )) as Schema.Schema.Type<T>;
+              }
+
+              results.push({
+                id: row.id as string,
+                data: converted,
+                created_at: row.created_at as number,
+                updated_at: row.updated_at as number,
+              });
+            }
+
+            return results;
+          });
+
+        const updateEntity = <T extends AnyTaggedStruct>(
+          schema: T,
+          id: string,
+          data: Partial<Omit<Schema.Schema.Type<T>, "_tag">>,
+          opts?: { readonly mode?: UpdateMode },
+        ): Effect.Effect<
+          EntityRecord<T>,
+          | EntityNotFoundError
+          | LensPathNotFoundError
+          | TransformError
+          | ValidationError
+          | SqlError
+        > =>
+          Effect.gen(function* () {
+            const targetTag = getTag(schema);
+
+            // Fetch existing entity
+            const rows = yield* sql<
+              Record<string, unknown>
+            >`SELECT * FROM entities WHERE id = ${id}`;
+
+            if (rows.length === 0) {
+              return yield* new EntityNotFoundError({
+                entityId: id,
+                message: `Entity not found: ${id}`,
+              });
+            }
+
+            const row = rows[0];
+            const storedType = row.type as string;
+            const existingData = JSON.parse(row.data as string);
+
+            // Project existing data to target schema if needed
+            let projected: Record<string, unknown>;
+            if (storedType === targetTag) {
+              projected = existingData;
+            } else {
+              const path = registry.getPath(storedType, targetTag);
+              if (!path) {
+                return yield* new LensPathNotFoundError({
+                  fromType: storedType,
+                  toType: targetTag,
+                  message: `No lens path from ${storedType} to ${targetTag}`,
+                });
+              }
+              projected = (yield* applyLensPath(
+                path,
+                existingData,
+              )) as Record<string, unknown>;
+            }
+
+            // Apply update
+            const mode = opts?.mode ?? "merge";
+            const newData =
+              mode === "merge"
+                ? ({ ...projected, ...data, _tag: targetTag } as unknown as Schema.Schema.Type<T>)
+                : ({ ...data, _tag: targetTag } as unknown as Schema.Schema.Type<T>);
+
+            // Validate
+            try {
+              validateSync(schema, newData);
+            } catch (error) {
+              return yield* new ValidationError({
+                message: `Validation failed for ${targetTag}: ${error}`,
+              });
+            }
+
+            // Persist (always stored as the target schema version)
+            yield* sql`
+              UPDATE entities
+              SET type = ${targetTag},
+                  data = ${JSON.stringify(newData)},
+                  updated_at = unixepoch()
+              WHERE id = ${id}
+            `;
+
+            const updated = yield* sql<
+              Record<string, unknown>
+            >`SELECT * FROM entities WHERE id = ${id}`;
+
+            return deserializeRow<T>(updated[0]);
+          });
+
+        const deleteEntity = (
+          id: string,
+        ): Effect.Effect<void, SqlError> =>
+          Effect.gen(function* () {
+            yield* sql`DELETE FROM entities WHERE id = ${id}`;
+          });
+
+        // ── Return service ──────────────────────────────────────────────
+
+        return Store.of({
+          saveEntity,
+          loadEntity,
+          loadEntities,
+          updateEntity,
+          deleteEntity,
         });
-
-      const createIndex = (
-        indexName: string,
-        jsonPath: string,
-        tableName = "entities"
-      ): Effect.Effect<void, SqlError> =>
-        Effect.gen(function* () {
-          yield* sql.unsafe(
-            `CREATE INDEX IF NOT EXISTS "${indexName}" ON ${tableName}(json_extract(data, '${jsonPath}'))`
-          );
-        });
-
-      const dropIndex = (indexName: string): Effect.Effect<void, SqlError> =>
-        Effect.gen(function* () {
-          yield* sql.unsafe(`DROP INDEX IF EXISTS "${indexName}"`);
-        });
-
-      const listIndexes = (): Effect.Effect<string[], SqlError> =>
-        Effect.gen(function* () {
-          const rows = yield* sql<{
-            name: string;
-          }>`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'entities'`;
-          return rows.map((r) => r.name);
-        });
-
-      // ── Return service shape ────────────────────────────────────────
-
-      return Store.of({
-        registerSchema,
-        getSchema: getSchemaById,
-        listSchemas: () => Effect.map(sql<Schema>`SELECT * FROM schemas`, (rows) => [...rows]),
-        registerLens,
-        getLens: getLensById,
-        listLenses: listAllLenses,
-        createEntity,
-        getEntity,
-        updateEntity,
-        deleteEntity,
-        listEntities,
-        createIndex,
-        dropIndex,
-        listIndexes,
-      });
-    })
-  );
+      }),
+    );
 }

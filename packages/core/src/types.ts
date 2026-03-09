@@ -1,54 +1,71 @@
-export interface Schema {
-  id: string;   // SHA256(def)
-  name: string; // human label only
-  def: string;  // Effect Schema source string (S = Schema)
+import type { Schema } from "effect";
+
+// ─── Tagged Struct Constraint ───────────────────────────────────────────────
+
+/**
+ * A Schema.Struct that has a `_tag` field (i.e., produced by Schema.TaggedStruct).
+ * Used as the base constraint for all store operations.
+ *
+ * We use a structural constraint that checks for `fields._tag.schema.literal`
+ * rather than constraining the full Struct generic, to avoid variance issues
+ * with Effect's internal type parameters.
+ */
+export interface AnyTaggedStruct extends Schema.Top {
+  readonly fields: {
+    readonly _tag: {
+      readonly schema: { readonly literal: string };
+    };
+  } & Schema.Struct.Fields;
 }
 
-export interface Lens {
-  id: string;
-  from_schema: string;
-  to_schema: string;
-  forward: string;  // JS: (data: unknown) => unknown
-  backward: string; // JS: (data: unknown) => unknown
+// ─── Entity Record ──────────────────────────────────────────────────────────
+
+/** An entity record returned from store queries. */
+export interface EntityRecord<T extends AnyTaggedStruct> {
+  readonly id: string;
+  readonly data: Schema.Schema.Type<T>;
+  readonly created_at: number;
+  readonly updated_at: number;
 }
 
-export interface Entity {
-  id: string;
-  schema_id: string;
-  data: Record<string, unknown>;
-  created_at: number;
-  updated_at: number;
-}
-
-export type PathStep = {
-  lens_id: string;
-  direction: "forward" | "backward";
-};
-
-export interface ReachabilityRow {
-  from_schema: string;
-  to_schema: string;
-  path: PathStep[];
-}
+// ─── Update Mode ────────────────────────────────────────────────────────────
 
 export type UpdateMode = "merge" | "replace";
 
-export interface CreateEntityOptions {
-  id?: string;
-  validate?: boolean;
+// ─── Lens ───────────────────────────────────────────────────────────────────
+
+/** A bidirectional lens between two TaggedStruct schemas. */
+export interface Lens<
+  From extends AnyTaggedStruct = AnyTaggedStruct,
+  To extends AnyTaggedStruct = AnyTaggedStruct,
+> {
+  readonly from: From;
+  readonly to: To;
+  readonly forward: (data: Schema.Schema.Type<From>) => Schema.Schema.Type<To>;
+  readonly backward: (data: Schema.Schema.Type<To>) => Schema.Schema.Type<From>;
 }
 
-export interface GetEntityOptions {
-  as?: string; // target schema_id to project into
+// ─── Lens Graph Internals ───────────────────────────────────────────────────
+
+export interface LensPathStep {
+  readonly fromTag: string;
+  readonly toTag: string;
+  readonly transform: (data: unknown) => unknown;
 }
 
-export interface ListEntitiesOptions {
-  as?: string; // target schema_id to project into
+export interface LensPath {
+  readonly steps: ReadonlyArray<LensPathStep>;
 }
 
-export interface RegisterLensOptions {
-  from: string;
-  to: string;
-  forward: string;
-  backward: string;
+// ─── Store Configuration ────────────────────────────────────────────────────
+
+export interface StoreConfig {
+  readonly schemas: ReadonlyArray<AnyTaggedStruct>;
+  readonly lenses?: ReadonlyArray<Lens>;
 }
+
+// ─── Utility ────────────────────────────────────────────────────────────────
+
+/** Extract the tag literal from a TaggedStruct schema. */
+export type TagOf<T extends AnyTaggedStruct> =
+  T["fields"]["_tag"]["schema"]["literal"];

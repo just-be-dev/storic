@@ -1,7 +1,0 @@
-name = "storic-cloudflare-e2e"
-main = "worker.ts"
-compatibility_date = "2025-01-01"
-compatibility_flags = ["nodejs_compat"]
-
-[[worker_loaders]]
-binding = "EVALUATOR"

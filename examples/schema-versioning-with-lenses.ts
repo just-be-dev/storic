@@ -1,88 +1,103 @@
-import { Console, Effect, Layer } from "effect";
+import { Console, Effect, Layer, Schema } from "effect";
 import { BunRuntime } from "@effect/platform-bun";
 import { layer as sqliteLayer } from "@effect/sql-sqlite-bun/SqliteClient";
-import { Store, JsEvaluator } from "../packages/core/src/index.ts";
+import { Store, defineLens } from "../packages/core/src/index.ts";
+
+// ─── Schema definitions ───────────────────────────────────────────────────────
+
+const PersonV1 = Schema.TaggedStruct("Person.v1", {
+  firstName: Schema.String,
+  lastName: Schema.String,
+  email: Schema.String.annotate({ index: true }),
+});
+
+const PersonV2 = Schema.TaggedStruct("Person.v2", {
+  fullName: Schema.String,
+  email: Schema.String.annotate({ index: true }),
+  age: Schema.Number,
+});
+
+type PersonV1 = typeof PersonV1.Type;
+type PersonV2 = typeof PersonV2.Type;
+
+// ─── Lens definition ──────────────────────────────────────────────────────────
+
+const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
+  decode: (v1) => ({
+    _tag: "Person.v2" as const,
+    fullName: `${v1.firstName} ${v1.lastName}`,
+    email: v1.email,
+    age: 0,
+  }),
+  encode: (v2) => ({
+    _tag: "Person.v1" as const,
+    firstName: v2.fullName.split(" ")[0],
+    lastName: v2.fullName.split(" ").slice(1).join(" "),
+    email: v2.email,
+  }),
+});
 
 // ─── Layer setup ──────────────────────────────────────────────────────────────
 
 const SqlLive = sqliteLayer({ filename: ":memory:" });
-const StoreLive = Store.layer.pipe(
-  Layer.provide(Layer.mergeAll(SqlLive, JsEvaluator.Eval)),
-);
+const StoreLive = Store.layer({
+  schemas: [PersonV1, PersonV2],
+  lenses: [PersonV1toV2],
+}).pipe(Layer.provide(SqlLive));
 
 // ─── Main program ─────────────────────────────────────────────────────────────
 
 const program = Effect.gen(function* () {
   const store = yield* Store;
 
-  // ── 1. Register schemas (id = SHA256 of def) ───────────────────────────
-  const userV1 = yield* store.registerSchema(
-    "User",
-    `S.Struct({ firstName: S.String, lastName: S.String, email: S.String })`,
-  );
-
-  const userV2 = yield* store.registerSchema(
-    "User",
-    `S.Struct({ fullName: S.String, email: S.String })`,
-  );
-
-  yield* Console.log("V1:", userV1.id.slice(0, 12), "…");
-  yield* Console.log("V2:", userV2.id.slice(0, 12), "…");
-
-  // ── 2. Register lens V1 ↔ V2 ──────────────────────────────────────────
-  yield* store.registerLens({
-    from: userV1.id,
-    to: userV2.id,
-    forward: `(data) => ({
-      fullName: data.firstName + ' ' + data.lastName,
-      email: data.email
-    })`,
-    backward: `(data) => ({
-      firstName: data.fullName.split(' ')[0],
-      lastName: data.fullName.split(' ').slice(1).join(' '),
-      email: data.email
-    })`,
-  });
-
-  // ── 3. Create entities under different schema versions ─────────────────
-  const alice = yield* store.createEntity(userV1.id, {
+  // ── 1. Save entities under different schema versions ─────────────────
+  const alice = yield* store.saveEntity(PersonV1, {
     firstName: "Alice",
     lastName: "Smith",
     email: "alice@example.com",
   });
 
-  const bob = yield* store.createEntity(userV2.id, {
+  const bob = yield* store.saveEntity(PersonV2, {
     fullName: "Bob Jones",
     email: "bob@example.com",
+    age: 30,
   });
 
-  // ── 4. Read with lens projection ──────────────────────────────────────
-  const aliceAsV2 = yield* store.getEntity(alice.id, { as: userV2.id });
-  yield* Console.log("\nAlice as V2:", aliceAsV2.data);
+  yield* Console.log("Saved Alice (V1):", alice.data);
+  yield* Console.log("Saved Bob   (V2):", bob.data);
 
-  const bobAsV1 = yield* store.getEntity(bob.id, { as: userV1.id });
-  yield* Console.log("Bob   as V1:", bobAsV1.data);
+  // ── 2. Load individual entities with lens projection ─────────────────
+  const aliceAsV2 = yield* store.loadEntity(PersonV2, alice.id);
+  yield* Console.log("\nAlice loaded as V2:", aliceAsV2.data);
 
-  // ── 5. List all "User" entities regardless of storage schema ──────────
-  const allAsV2 = yield* store.listEntities(userV2.id, { as: userV2.id });
-  yield* Console.log("\nAll users as V2:");
+  const bobAsV1 = yield* store.loadEntity(PersonV1, bob.id);
+  yield* Console.log("Bob   loaded as V1:", bobAsV1.data);
+
+  // ── 3. Load ALL entities as V2 (V1 entries auto-converted) ───────────
+  const allAsV2 = yield* store.loadEntities(PersonV2);
+  yield* Console.log("\nAll persons as V2:");
   for (const e of allAsV2) {
     yield* Console.log(" ", e.data);
   }
 
-  // ── 6. Merge update ───────────────────────────────────────────────────
-  yield* store.updateEntity(
-    alice.id,
-    { email: "alice2@example.com" },
-    { mode: "merge" },
-  );
-  const aliceUpdated = yield* store.getEntity(alice.id);
+  // ── 4. Load ALL entities as V1 (V2 entries auto-converted) ───────────
+  const allAsV1 = yield* store.loadEntities(PersonV1);
+  yield* Console.log("\nAll persons as V1:");
+  for (const e of allAsV1) {
+    yield* Console.log(" ", e.data);
+  }
+
+  // ── 5. Update with merge mode ────────────────────────────────────────
+  yield* store.updateEntity(PersonV1, alice.id, {
+    email: "alice2@example.com",
+  });
+  const aliceUpdated = yield* store.loadEntity(PersonV1, alice.id);
   yield* Console.log("\nAlice after merge update:", aliceUpdated.data);
 
-  // ── 7. Add expression index ───────────────────────────────────────────
-  yield* store.createIndex("idx_email", "$.email");
-  const indexes = yield* store.listIndexes();
-  yield* Console.log("\nIndexes on entities:", indexes);
+  // ── 6. Delete ────────────────────────────────────────────────────────
+  yield* store.deleteEntity(bob.id);
+  const remaining = yield* store.loadEntities(PersonV2);
+  yield* Console.log("\nRemaining after deleting Bob:", remaining.length, "entity");
 
   yield* Console.log("\nDone.");
 });

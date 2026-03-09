@@ -1,25 +1,35 @@
+// ─── Core Store ─────────────────────────────────────────────────────────────
 export { Store } from "./store.ts";
 export type { StoreShape, StoreError } from "./store.ts";
+
+// ─── Lens ───────────────────────────────────────────────────────────────────
+export { defineLens } from "./lens.ts";
+
+// ─── Schema Registry ────────────────────────────────────────────────────────
+export { SchemaRegistry, getTag } from "./schema-registry.ts";
+
+// ─── Annotations ────────────────────────────────────────────────────────────
 export {
-  SchemaNotFoundError,
+  extractFieldMetadata,
+  getIndexedFields,
+} from "./annotations.ts";
+export type { FieldMetadata } from "./annotations.ts";
+
+// ─── Errors ─────────────────────────────────────────────────────────────────
+export {
   EntityNotFoundError,
   ValidationError,
   LensPathNotFoundError,
-  SchemaDefEvalError,
   TransformError,
 } from "./errors.ts";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 export type {
-  Schema,
+  AnyTaggedStruct,
+  EntityRecord,
   Lens,
-  Entity,
-  PathStep,
-  ReachabilityRow,
+  LensPath,
+  LensPathStep,
+  StoreConfig,
   UpdateMode,
-  CreateEntityOptions,
-  GetEntityOptions,
-  ListEntitiesOptions,
-  RegisterLensOptions,
 } from "./types.ts";
-export { validate, parseSchema } from "./validate.ts";
-export { hashDef } from "./hash.ts";
-export { JsEvaluator } from "./evaluator.ts";
