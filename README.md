@@ -11,31 +11,31 @@ Storic is a monorepo containing multiple packages:
 
 ## Features
 
-- 🔄 **Schema Versioning** - Content-addressable schema versioning using SHA256 hashing
-- 🔍 **Bidirectional Lenses** - Transform data between schema versions automatically
-- 🎯 **Projection Queries** - Read entities in any reachable schema version
-- 📊 **SQLite Backend** - Fast, reliable storage with JSON expression indexes
-- 🛡️ **Type Safety** - Built with Effect for type-safe error handling and dependency injection
-- ☁️ **Cloudflare Workers** - Optional sandboxed JavaScript evaluation
+- **Schema Versioning** - Content-addressable schema versioning using SHA256 hashing
+- **Bidirectional Lenses** - Transform data between schema versions automatically
+- **Projection Queries** - Read entities in any reachable schema version
+- **SQLite Backend** - Fast, reliable storage with JSON expression indexes
+- **Type Safety** - Built with Effect for type-safe error handling and dependency injection
+- **Cloudflare Workers** - Optional sandboxed JavaScript evaluation
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-bun install
+mise install
 ```
 
 ### Build All Packages
 
 ```bash
-bun run build
+mise run build
 ```
 
 ### Run Example
 
 ```bash
-bun run example
+mise run example
 ```
 
 ## Package Documentation
@@ -61,22 +61,22 @@ storic/
 
 ```bash
 # Build
-bun run build              # Build all packages
-bun run build:core         # Build @storic/core
-bun run build:cloudflare   # Build @storic/cloudflare
+mise run build              # Build all packages
+mise run build:core         # Build @storic/core
+mise run build:cloudflare   # Build @storic/cloudflare
 
 # Type Checking
-bun run check              # Check all packages
-bun run check:core         # Check @storic/core
-bun run check:cloudflare   # Check @storic/cloudflare
+mise run check              # Check all packages
+mise run check:core         # Check @storic/core
+mise run check:cloudflare   # Check @storic/cloudflare
 
 # Testing
-bun run test               # Test all packages
-bun run test:core          # Test @storic/core
-bun run test:cloudflare    # Test @storic/cloudflare
+mise run test               # Test all packages
+mise run test:core          # Test @storic/core
+mise run test:cloudflare    # Test @storic/cloudflare
 
 # Examples
-bun run example            # Run example integration
+mise run example            # Run example integration
 ```
 
 ### Adding a New Package
@@ -93,10 +93,10 @@ Individual packages can be published to npm:
 
 ```bash
 cd packages/core
-bun publish
+mise run publish
 
 cd packages/cloudflare
-bun publish
+mise run publish
 ```
 
 Both packages are configured with `publishConfig: { access: "public" }`.

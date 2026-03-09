@@ -12,17 +12,46 @@ postinstall = "bun install"
 _.path = "node_modules/.bin"
 
 [tasks.build]
-description = "Build the project"
+description = "Build all packages"
 run = "tsgo"
 
-[tasks.typecheck]
+[tasks."build:core"]
+description = "Build @storic/core"
+run = "tsgo --filter core"
+
+[tasks."build:cloudflare"]
+description = "Build @storic/cloudflare"
+run = "tsgo --filter cloudflare"
+
+[tasks.check]
+description = "Check all packages"
 alias = "type-check"
 run = "tsgo -b --noEmit"
+
+[tasks."check:core"]
+description = "Check @storic/core"
+run = "tsgo -b --noEmit --filter core"
+
+[tasks."check:cloudflare"]
+description = "Check @storic/cloudflare"
+run = "tsgo -b --noEmit --filter cloudflare"
 
 [tasks.test]
 description = "Run tests"
 run = "bun test"
 
+[tasks."test:core"]
+description = "Test @storic/core"
+run = "bun test packages/core"
+
+[tasks."test:cloudflare"]
+description = "Test @storic/cloudflare"
+run = "bun test packages/cloudflare"
+
 [tasks.example]
 description = "Run the example"
 run = "bun examples/schema-versioning-with-lenses.ts"
+
+[tasks.publish]
+description = "Publish packages to npm"
+run = "bun publish"

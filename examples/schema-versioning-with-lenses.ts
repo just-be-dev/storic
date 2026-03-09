@@ -14,7 +14,7 @@ const PersonV1 = Schema.TaggedStruct("Person.v1", {
 const PersonV2 = Schema.TaggedStruct("Person.v2", {
   fullName: Schema.String,
   email: Schema.String.annotate({ index: true }),
-  age: Schema.Number,
+  age: Schema.optional(Schema.Number),
 });
 
 type PersonV1 = typeof PersonV1.Type;
@@ -27,7 +27,6 @@ const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
     _tag: "Person.v2" as const,
     fullName: `${v1.firstName} ${v1.lastName}`,
     email: v1.email,
-    age: 0,
   }),
   encode: (v2) => ({
     _tag: "Person.v1" as const,
