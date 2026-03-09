@@ -7,21 +7,11 @@
     "@typescript/native-preview": "latest"
   },
   "private": true,
-  "scripts": {
-    "build": "cd packages/core && bun run build && cd ../cloudflare && bun run build",
-    "build:core": "cd packages/core && bun run build",
-    "build:cloudflare": "cd packages/cloudflare && bun run build",
-    "check": "cd packages/core && bun run check && cd ../cloudflare && bun run check",
-    "check:core": "cd packages/core && bun run check",
-    "check:cloudflare": "cd packages/cloudflare && bun run check",
-    "test": "cd packages/core && bun test && cd ../cloudflare && bun test",
-    "test:core": "cd packages/core && bun test",
-    "test:cloudflare": "cd packages/cloudflare && bun test",
-    "example": "bun examples/schema-versioning-with-lenses.ts"
-  },
   "type": "module",
   "workspaces": {
-    "packages": ["packages/*"],
+    "packages": [
+      "packages/*"
+    ],
     "catalog": {
       "@typescript/native-preview": "latest"
     }
