@@ -1,5 +1,6 @@
-import { SchemaAST } from "effect";
+import * as SchemaAST from "effect/SchemaAST";
 import type { AnyTaggedStruct } from "./types.ts";
+import type { Annotations } from "effect/Schema"
 
 // ─── Module Augmentation ────────────────────────────────────────────────────
 
@@ -14,13 +15,13 @@ declare module "effect/Schema" {
 
 // ─── Field Metadata ─────────────────────────────────────────────────────────
 
-export interface FieldMetadata {
+export interface FieldMetadata extends Annotations.Augment {
   readonly name: string;
   readonly index: boolean;
 }
 
 /**
- * Extract field metadata (including index annotations) from a TaggedStruct schema.
+ * Extract field metadata (including all annotations) from a TaggedStruct schema.
  */
 export function extractFieldMetadata(
   schema: AnyTaggedStruct,
@@ -37,11 +38,13 @@ export function extractFieldMetadata(
     // Skip the _tag discriminant field
     if (prop.name === "_tag") continue;
 
-    const annotations = SchemaAST.resolve(prop.type);
+    // In Effect v4, annotations are stored directly on the AST node
+    const annotations = prop.type.annotations as Annotations.Augment | undefined;
 
     fields.push({
       name: String(prop.name),
       index: annotations?.index === true,
+      ...annotations
     });
   }
 
