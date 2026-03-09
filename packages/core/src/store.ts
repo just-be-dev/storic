@@ -59,7 +59,7 @@ function applyLensPath(
         current = step.transform(current);
       } catch (error) {
         return yield* new TransformError({
-          reason: `Failed to transform from ${step.fromTag} to ${step.toTag}: ${error}`,
+          reason: `Failed to transform from ${step.fromType} to ${step.toType}: ${error}`,
         });
       }
     }

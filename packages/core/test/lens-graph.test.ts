@@ -2,69 +2,69 @@ import { test, expect, describe } from "bun:test";
 import { LensGraph } from "../src/lens-graph.ts";
 
 describe("LensGraph", () => {
-  test("getConnectedTags returns only the tag itself when no lenses exist", () => {
+  test("getConnectedTypes returns only the type itself when no lenses exist", () => {
     const graph = new LensGraph();
-    expect(graph.getConnectedTags("Person.v1")).toEqual(["Person.v1"]);
+    expect(graph.getConnectedTypes("Person.v1")).toEqual(["Person.v1"]);
   });
 
-  test("getConnectedTags returns connected tags", () => {
+  test("getConnectedTypes returns connected types", () => {
     const graph = new LensGraph();
     graph.register({
-      fromTag: "Person.v1",
-      toTag: "Person.v2",
+      fromType: "Person.v1",
+      toType: "Person.v2",
       forward: (d) => d,
       backward: (d) => d,
     });
 
-    const connected = graph.getConnectedTags("Person.v1");
+    const connected = graph.getConnectedTypes("Person.v1");
     expect(connected).toContain("Person.v1");
     expect(connected).toContain("Person.v2");
     expect(connected).toHaveLength(2);
   });
 
-  test("getConnectedTags works from either direction", () => {
+  test("getConnectedTypes works from either direction", () => {
     const graph = new LensGraph();
     graph.register({
-      fromTag: "Person.v1",
-      toTag: "Person.v2",
+      fromType: "Person.v1",
+      toType: "Person.v2",
       forward: (d) => d,
       backward: (d) => d,
     });
 
-    const fromV2 = graph.getConnectedTags("Person.v2");
+    const fromV2 = graph.getConnectedTypes("Person.v2");
     expect(fromV2).toContain("Person.v1");
     expect(fromV2).toContain("Person.v2");
   });
 
-  test("getConnectedTags follows transitive connections", () => {
+  test("getConnectedTypes follows transitive connections", () => {
     const graph = new LensGraph();
     graph.register({
-      fromTag: "A.v1",
-      toTag: "A.v2",
+      fromType: "A.v1",
+      toType: "A.v2",
       forward: (d) => d,
       backward: (d) => d,
     });
     graph.register({
-      fromTag: "A.v2",
-      toTag: "A.v3",
+      fromType: "A.v2",
+      toType: "A.v3",
       forward: (d) => d,
       backward: (d) => d,
     });
 
-    const connected = graph.getConnectedTags("A.v1");
+    const connected = graph.getConnectedTypes("A.v1");
     expect(connected).toContain("A.v1");
     expect(connected).toContain("A.v2");
     expect(connected).toContain("A.v3");
     expect(connected).toHaveLength(3);
   });
 
-  test("getPath returns empty steps for same tag", () => {
+  test("getPath returns empty steps for same type", () => {
     const graph = new LensGraph();
     const path = graph.getPath("Person.v1", "Person.v1");
     expect(path).toEqual({ steps: [] });
   });
 
-  test("getPath returns null for disconnected tags", () => {
+  test("getPath returns null for disconnected types", () => {
     const graph = new LensGraph();
     const path = graph.getPath("Person.v1", "User.v1");
     expect(path).toBeNull();
@@ -73,8 +73,8 @@ describe("LensGraph", () => {
   test("getPath finds direct connection", () => {
     const graph = new LensGraph();
     graph.register({
-      fromTag: "Person.v1",
-      toTag: "Person.v2",
+      fromType: "Person.v1",
+      toType: "Person.v2",
       forward: (d: any) => ({ ...d, version: 2 }),
       backward: (d: any) => ({ ...d, version: 1 }),
     });
@@ -82,8 +82,8 @@ describe("LensGraph", () => {
     const path = graph.getPath("Person.v1", "Person.v2");
     expect(path).not.toBeNull();
     expect(path!.steps).toHaveLength(1);
-    expect(path!.steps[0].fromTag).toBe("Person.v1");
-    expect(path!.steps[0].toTag).toBe("Person.v2");
+    expect(path!.steps[0].fromType).toBe("Person.v1");
+    expect(path!.steps[0].toType).toBe("Person.v2");
 
     // Forward transform
     const result = path!.steps[0].transform({ name: "Alice" });
@@ -93,8 +93,8 @@ describe("LensGraph", () => {
   test("getPath finds backward connection", () => {
     const graph = new LensGraph();
     graph.register({
-      fromTag: "Person.v1",
-      toTag: "Person.v2",
+      fromType: "Person.v1",
+      toType: "Person.v2",
       forward: (d: any) => ({ ...d, version: 2 }),
       backward: (d: any) => ({ ...d, version: 1 }),
     });
@@ -111,14 +111,14 @@ describe("LensGraph", () => {
   test("getPath finds multi-hop path", () => {
     const graph = new LensGraph();
     graph.register({
-      fromTag: "A.v1",
-      toTag: "A.v2",
+      fromType: "A.v1",
+      toType: "A.v2",
       forward: (d) => d,
       backward: (d) => d,
     });
     graph.register({
-      fromTag: "A.v2",
-      toTag: "A.v3",
+      fromType: "A.v2",
+      toType: "A.v3",
       forward: (d) => d,
       backward: (d) => d,
     });
@@ -126,17 +126,17 @@ describe("LensGraph", () => {
     const path = graph.getPath("A.v1", "A.v3");
     expect(path).not.toBeNull();
     expect(path!.steps).toHaveLength(2);
-    expect(path!.steps[0].fromTag).toBe("A.v1");
-    expect(path!.steps[0].toTag).toBe("A.v2");
-    expect(path!.steps[1].fromTag).toBe("A.v2");
-    expect(path!.steps[1].toTag).toBe("A.v3");
+    expect(path!.steps[0].fromType).toBe("A.v1");
+    expect(path!.steps[0].toType).toBe("A.v2");
+    expect(path!.steps[1].fromType).toBe("A.v2");
+    expect(path!.steps[1].toType).toBe("A.v3");
   });
 
   test("getPath caches results", () => {
     const graph = new LensGraph();
     graph.register({
-      fromTag: "A.v1",
-      toTag: "A.v2",
+      fromType: "A.v1",
+      toType: "A.v2",
       forward: (d) => d,
       backward: (d) => d,
     });
@@ -146,17 +146,17 @@ describe("LensGraph", () => {
     expect(path1).toBe(path2); // Same reference (cached)
   });
 
-  test("getAllTags returns all registered tags", () => {
+  test("getAllTypes returns all registered types", () => {
     const graph = new LensGraph();
     graph.register({
-      fromTag: "A.v1",
-      toTag: "A.v2",
+      fromType: "A.v1",
+      toType: "A.v2",
       forward: (d) => d,
       backward: (d) => d,
     });
 
-    const tags = graph.getAllTags();
-    expect(tags).toContain("A.v1");
-    expect(tags).toContain("A.v2");
+    const types = graph.getAllTypes();
+    expect(types).toContain("A.v1");
+    expect(types).toContain("A.v2");
   });
 });

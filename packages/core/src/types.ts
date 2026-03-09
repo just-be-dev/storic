@@ -48,8 +48,8 @@ export interface Lens<
 // ─── Lens Graph Internals ───────────────────────────────────────────────────
 
 export interface LensPathStep {
-  readonly fromTag: string;
-  readonly toTag: string;
+  readonly fromType: string;
+  readonly toType: string;
   readonly transform: (data: unknown) => unknown;
 }
 

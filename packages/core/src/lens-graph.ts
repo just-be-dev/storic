@@ -3,7 +3,7 @@ import type { LensPath, LensPathStep } from "./types.ts";
 // ─── Internal Edge Type ─────────────────────────────────────────────────────
 
 interface LensEdge {
-  readonly toTag: string;
+  readonly toType: string;
   readonly transform: (data: unknown) => unknown;
 }
 
@@ -20,33 +20,33 @@ export class LensGraph {
   private readonly pathCache = new Map<string, LensPath | null>();
 
   /**
-   * Register a bidirectional lens edge between two tags.
+   * Register a bidirectional lens edge between two types.
    *
    * Both `forward` and `backward` directions are added to the adjacency list.
    */
   register(edge: {
-    readonly fromTag: string;
-    readonly toTag: string;
+    readonly fromType: string;
+    readonly toType: string;
     readonly forward: (data: unknown) => unknown;
     readonly backward: (data: unknown) => unknown;
   }): void {
     // Ensure both nodes exist in the adjacency map
-    if (!this.adjacency.has(edge.fromTag)) {
-      this.adjacency.set(edge.fromTag, []);
+    if (!this.adjacency.has(edge.fromType)) {
+      this.adjacency.set(edge.fromType, []);
     }
-    if (!this.adjacency.has(edge.toTag)) {
-      this.adjacency.set(edge.toTag, []);
+    if (!this.adjacency.has(edge.toType)) {
+      this.adjacency.set(edge.toType, []);
     }
 
-    // Forward edge: fromTag → toTag
-    this.adjacency.get(edge.fromTag)!.push({
-      toTag: edge.toTag,
+    // Forward edge: fromType → toType
+    this.adjacency.get(edge.fromType)!.push({
+      toType: edge.toType,
       transform: edge.forward,
     });
 
-    // Backward edge: toTag → fromTag (reversed)
-    this.adjacency.get(edge.toTag)!.push({
-      toTag: edge.fromTag,
+    // Backward edge: toType → fromType (reversed)
+    this.adjacency.get(edge.toType)!.push({
+      toType: edge.fromType,
       transform: edge.backward,
     });
 
@@ -55,22 +55,22 @@ export class LensGraph {
   }
 
   /**
-   * Get all tags reachable from the given tag (including the tag itself).
+   * Get all types reachable from the given type (including the type itself).
    *
    * Uses BFS to traverse the full connected component.
    */
-  getConnectedTags(tag: string): string[] {
-    const visited = new Set<string>([tag]);
-    const queue = [tag];
+  getConnectedTypes(type: string): string[] {
+    const visited = new Set<string>([type]);
+    const queue = [type];
 
     while (queue.length > 0) {
       const current = queue.shift()!;
       const neighbors = this.adjacency.get(current) ?? [];
 
       for (const edge of neighbors) {
-        if (!visited.has(edge.toTag)) {
-          visited.add(edge.toTag);
-          queue.push(edge.toTag);
+        if (!visited.has(edge.toType)) {
+          visited.add(edge.toType);
+          queue.push(edge.toType);
         }
       }
     }
@@ -79,51 +79,51 @@ export class LensGraph {
   }
 
   /**
-   * Find the shortest transformation path between two tags.
+   * Find the shortest transformation path between two types.
    *
-   * Returns `null` if no path exists. Returns `{ steps: [] }` if the tags
+   * Returns `null` if no path exists. Returns `{ steps: [] }` if the types
    * are the same (identity path).
    *
    * Results are cached for repeated lookups.
    */
-  getPath(fromTag: string, toTag: string): LensPath | null {
-    if (fromTag === toTag) {
+  getPath(fromType: string, toType: string): LensPath | null {
+    if (fromType === toType) {
       return { steps: [] };
     }
 
-    const cacheKey = `${fromTag}→${toTag}`;
+    const cacheKey = `${fromType}→${toType}`;
     const cached = this.pathCache.get(cacheKey);
     if (cached !== undefined) {
       return cached;
     }
 
     // BFS to find shortest path
-    const visited = new Set<string>([fromTag]);
-    const queue: Array<{ tag: string; path: LensPathStep[] }> = [
-      { tag: fromTag, path: [] },
+    const visited = new Set<string>([fromType]);
+    const queue: Array<{ type: string; path: LensPathStep[] }> = [
+      { type: fromType, path: [] },
     ];
 
     while (queue.length > 0) {
-      const { tag, path } = queue.shift()!;
-      const neighbors = this.adjacency.get(tag) ?? [];
+      const { type, path } = queue.shift()!;
+      const neighbors = this.adjacency.get(type) ?? [];
 
       for (const edge of neighbors) {
         const nextStep: LensPathStep = {
-          fromTag: tag,
-          toTag: edge.toTag,
+          fromType: type,
+          toType: edge.toType,
           transform: edge.transform,
         };
 
-        if (edge.toTag === toTag) {
+        if (edge.toType === toType) {
           const result: LensPath = { steps: [...path, nextStep] };
           this.pathCache.set(cacheKey, result);
           return result;
         }
 
-        if (!visited.has(edge.toTag)) {
-          visited.add(edge.toTag);
+        if (!visited.has(edge.toType)) {
+          visited.add(edge.toType);
           queue.push({
-            tag: edge.toTag,
+            type: edge.toType,
             path: [...path, nextStep],
           });
         }
@@ -135,9 +135,9 @@ export class LensGraph {
   }
 
   /**
-   * Get all tags that have been registered in the graph.
+   * Get all types that have been registered in the graph.
    */
-  getAllTags(): string[] {
+  getAllTypes(): string[] {
     return Array.from(this.adjacency.keys());
   }
 }

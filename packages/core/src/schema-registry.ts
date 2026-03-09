@@ -41,12 +41,12 @@ export class SchemaRegistry {
     // Build lens graph
     this.lensGraph = new LensGraph();
     for (const lens of config.lenses ?? []) {
-      const fromTag = getTag(lens.from);
-      const toTag = getTag(lens.to);
+      const fromType = getTag(lens.from);
+      const toType = getTag(lens.to);
 
       this.lensGraph.register({
-        fromTag,
-        toTag,
+        fromType,
+        toType,
         forward: lens.forward as (data: unknown) => unknown,
         backward: lens.backward as (data: unknown) => unknown,
       });
@@ -68,14 +68,14 @@ export class SchemaRegistry {
    * (including the tag itself).
    */
   getConnectedTags(tag: string): string[] {
-    return this.lensGraph.getConnectedTags(tag);
+    return this.lensGraph.getConnectedTypes(tag);
   }
 
   /**
    * Get the shortest transformation path between two tags.
    * Returns `null` if no path exists.
    */
-  getPath(fromTag: string, toTag: string): LensPath | null {
-    return this.lensGraph.getPath(fromTag, toTag);
+  getPath(fromType: string, toType: string): LensPath | null {
+    return this.lensGraph.getPath(fromType, toType);
   }
 }
