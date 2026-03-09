@@ -13,7 +13,7 @@ _.path = "node_modules/.bin"
 
 [tasks.build]
 description = "Build the project"
-run = "tsc"
+run = "tsgo"
 
 [tasks.test]
 description = "Run tests"

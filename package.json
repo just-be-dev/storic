@@ -4,7 +4,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^22.0.0",
-    "typescript": "^5.4.0"
+    "@typescript/native-preview": "latest"
   },
   "private": true,
   "scripts": {
@@ -20,9 +20,12 @@
     "example": "bun examples/schema-versioning-with-lenses.ts"
   },
   "type": "module",
-  "workspaces": [
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": ["packages/*"],
+    "catalog": {
+      "@typescript/native-preview": "latest"
+    }
+  },
   "dependencies": {
     "@effect/platform-bun": "4.0.0-beta.29",
     "@effect/sql-sqlite-bun": "4.0.0-beta.29",
