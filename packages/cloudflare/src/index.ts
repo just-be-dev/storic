@@ -3,16 +3,16 @@
  *
  * Helper utilities for using Storic with Cloudflare Durable Objects.
  *
- * This package is a placeholder for future Cloudflare-specific integrations
- * such as:
- * - Durable Object storage adapter
- * - D1 database adapter
- * - KV caching layer
- *
- * For now, use `@storic/core` directly with a compatible SqlClient layer.
+ * Provides:
+ * - `sqlStorageLayer` — Effect SqlClient backed by DO's sync SqlStorage
+ * - `StoricObject` — Base class for DOs with automatic Store setup
  */
 
-// Re-export core for convenience
+// ─── Cloudflare-specific ────────────────────────────────────────────────────
+export { sqlStorageLayer } from "./sql-storage-client.ts";
+export { StoricObject } from "./storic-object.ts";
+
+// ─── Re-export core for convenience ─────────────────────────────────────────
 export { Store, defineLens, SchemaRegistry, getTag } from "@storic/core";
 export type {
   AnyTaggedStruct,

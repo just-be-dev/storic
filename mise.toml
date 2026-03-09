@@ -15,6 +15,10 @@ _.path = "node_modules/.bin"
 description = "Build the project"
 run = "tsgo"
 
+[tasks.typecheck]
+alias = "type-check"
+run = "tsgo -b --noEmit"
+
 [tasks.test]
 description = "Run tests"
 run = "bun test"
