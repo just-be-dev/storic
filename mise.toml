@@ -52,6 +52,18 @@ run = "bun test packages/cloudflare"
 description = "Run the example"
 run = "bun examples/schema-versioning-with-lenses.ts"
 
+[tasks.lint]
+description = "Lint all packages"
+run = "oxlint"
+
+[tasks.fmt]
+description = "Format all packages"
+run = "oxfmt ."
+
+[tasks."fmt:check"]
+description = "Check formatting"
+run = "oxfmt --check ."
+
 [tasks.publish]
 description = "Publish packages to npm"
 run = "bun publish"
