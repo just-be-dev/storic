@@ -1,7 +1,6 @@
 import { LensGraph } from "./lens-graph.ts";
 import type {
   AnyTaggedStruct,
-  Lens,
   LensPath,
   StoreConfig,
 } from "./types.ts";

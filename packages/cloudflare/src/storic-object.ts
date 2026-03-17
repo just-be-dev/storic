@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
-import { Store, Persistence } from "@storic/core";
+import { Store } from "@storic/core";
 import type { StoreConfig } from "@storic/core";
 import { doStoragePersistence } from "./persistence.ts";
 

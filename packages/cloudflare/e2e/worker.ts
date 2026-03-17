@@ -2,7 +2,7 @@
  * E2E test worker — a Durable Object using StoricObject with a simple
  * HTTP interface that exercises all store operations.
  */
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 import { StoricDO, Store, defineLens } from "../src/index.ts";
 import type { StoreConfig } from "../src/index.ts";
 

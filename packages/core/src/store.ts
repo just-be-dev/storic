@@ -10,13 +10,7 @@ import { computeIndexSpecs } from "./compute-indexes.ts";
 import { Persistence } from "./persistence.ts";
 import type { Filter, TypePatch } from "./persistence.ts";
 import { SchemaRegistry, getTag } from "./schema-registry.ts";
-import type {
-  AnyTaggedStruct,
-  EntityRecord,
-  LensPath,
-  StoreConfig,
-  UpdateMode,
-} from "./types.ts";
+import type { AnyTaggedStruct, EntityRecord, LensPath, StoreConfig, UpdateMode } from "./types.ts";
 
 // ─── Internal validation helper ─────────────────────────────────────────────
 
@@ -36,10 +30,7 @@ const generateId = (): string => crypto.randomUUID();
 /**
  * Apply a lens path to transform data from one schema version to another.
  */
-function applyLensPath(
-  path: LensPath,
-  data: unknown,
-): Effect.Effect<unknown, TransformError> {
+function applyLensPath(path: LensPath, data: unknown): Effect.Effect<unknown, TransformError> {
   return Effect.gen(function* () {
     let current = data;
 
@@ -91,12 +82,23 @@ export interface StoreShape {
     id: string,
   ) => Effect.Effect<
     EntityRecord<T>,
-    EntityNotFoundError | LensPathNotFoundError | TransformError | PersistenceError
+    | EntityNotFoundError
+    | LensPathNotFoundError
+    | TransformError
+    | ValidationError
+    | PersistenceError
   >;
 
   /**
    * Load all entities of a schema type, including connected versions
    * auto-converted via lenses.
+   *
+   * **Pagination caveat:** When multiple schema versions are connected via
+   * lenses, `limit` and `offset` apply to the combined SQL query across all
+   * connected types. This means page boundaries may produce uneven type
+   * distributions (e.g., a page could contain only V1 records). For
+   * predictable pagination, filter to fields present in all versions or
+   * query a single unconnected type.
    */
   readonly loadEntities: <T extends AnyTaggedStruct>(
     schema: T,
@@ -107,34 +109,59 @@ export interface StoreShape {
     },
   ) => Effect.Effect<
     Array<EntityRecord<T>>,
-    LensPathNotFoundError | TransformError | PersistenceError
-  >;
-
-  /** Update an entity's data. */
-  readonly updateEntity: <T extends AnyTaggedStruct>(
-    schema: T,
-    id: string,
-    data: Partial<Omit<Schema.Schema.Type<T>, "_tag">>,
-    opts?: { readonly mode?: UpdateMode },
-  ) => Effect.Effect<
-    EntityRecord<T>,
-    | EntityNotFoundError
-    | LensPathNotFoundError
-    | TransformError
-    | ValidationError
-    | PersistenceError
+    LensPathNotFoundError | TransformError | ValidationError | PersistenceError
   >;
 
   /**
-   * Patch all entities reachable from the given schema type.
-   * For each connected schema version, only fields that exist in that
-   * version are applied. Returns the total number of records updated.
+   * Update an entity's data.
+   *
+   * **Schema migration on write:** If the entity was stored as a different
+   * schema version, it will be projected to the target schema via lenses,
+   * the update applied, and the result stored as the target schema version.
+   * The stored `type` will change to match the target schema.
    */
+  readonly updateEntity: {
+    /** Update with merge mode (default) — partial data is merged with existing. */
+    <T extends AnyTaggedStruct>(
+      schema: T,
+      id: string,
+      data: Partial<Omit<Schema.Schema.Type<T>, "_tag">>,
+      opts?: { readonly mode?: "merge" },
+    ): Effect.Effect<
+      EntityRecord<T>,
+      | EntityNotFoundError
+      | LensPathNotFoundError
+      | TransformError
+      | ValidationError
+      | PersistenceError
+    >;
+
+    /** Update with replace mode — full data replaces the existing entity. */
+    <T extends AnyTaggedStruct>(
+      schema: T,
+      id: string,
+      data: Omit<Schema.Schema.Type<T>, "_tag">,
+      opts: { readonly mode: "replace" },
+    ): Effect.Effect<
+      EntityRecord<T>,
+      | EntityNotFoundError
+      | LensPathNotFoundError
+      | TransformError
+      | ValidationError
+      | PersistenceError
+    >;
+  };
+
   /**
    * Patch all entities reachable from the given schema type.
    * For each connected schema version, only fields that exist in that
    * version are applied. Optional filters narrow which records are patched.
    * Returns the total number of records updated.
+   *
+   * **Note:** Patches are applied at the SQL level via `json_patch` and
+   * bypass schema validation. Callers are responsible for ensuring patch
+   * values conform to schema field types. For validated updates, use
+   * `updateEntity` on individual records.
    */
   readonly patchEntities: <T extends AnyTaggedStruct>(
     schema: T,
@@ -143,16 +170,12 @@ export interface StoreShape {
   ) => Effect.Effect<number, PersistenceError>;
 
   /** Delete an entity by ID. */
-  readonly deleteEntity: (
-    id: string,
-  ) => Effect.Effect<void, PersistenceError>;
+  readonly deleteEntity: (id: string) => Effect.Effect<void, PersistenceError>;
 }
 
 // ─── Store Service ──────────────────────────────────────────────────────────
 
-export class Store extends ServiceMap.Service<Store, StoreShape>()(
-  "datastore/Store",
-) {
+export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/Store") {
   /**
    * Create a Store layer from a StoreConfig and a Persistence backend.
    *
@@ -220,6 +243,7 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
           | EntityNotFoundError
           | LensPathNotFoundError
           | TransformError
+          | ValidationError
           | PersistenceError
         > =>
           Effect.gen(function* () {
@@ -247,10 +271,18 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
                   message: `No lens path from ${storedType} to ${targetTag}`,
                 });
               }
-              converted = (yield* applyLensPath(
-                path,
-                stored.data,
-              )) as Schema.Schema.Type<T>;
+              converted = (yield* applyLensPath(path, stored.data)) as Schema.Schema.Type<T>;
+            }
+
+            // Validate lens output against target schema
+            if (storedType !== targetTag) {
+              try {
+                validateSync(schema, converted);
+              } catch (error) {
+                return yield* new ValidationError({
+                  message: `Lens output validation failed for ${targetTag}: ${error}`,
+                });
+              }
             }
 
             return {
@@ -270,7 +302,7 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
           },
         ): Effect.Effect<
           Array<EntityRecord<T>>,
-          LensPathNotFoundError | TransformError | PersistenceError
+          LensPathNotFoundError | TransformError | ValidationError | PersistenceError
         > =>
           Effect.gen(function* () {
             const targetTag = getTag(schema);
@@ -278,14 +310,13 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
 
             // Get all tags connected via lenses, excluding types that
             // don't have all filtered fields (to avoid silently widening results)
-            const connectedTags = registry.getConnectedTags(targetTag)
-              .filter((tag) => {
-                if (!filters?.length) return true;
-                const tagSchema = registry.getSchemaByTag(tag);
-                if (!tagSchema) return false;
-                const fieldNames = getFieldNames(tagSchema);
-                return filters.every((f) => fieldNames.has(f.field));
-              });
+            const connectedTags = registry.getConnectedTags(targetTag).filter((tag) => {
+              if (!filters?.length) return true;
+              const tagSchema = registry.getSchemaByTag(tag);
+              if (!tagSchema) return false;
+              const fieldNames = getFieldNames(tagSchema);
+              return filters.every((f) => fieldNames.has(f.field));
+            });
 
             // Query for all connected types
             const rows = yield* persistence.query({
@@ -311,10 +342,16 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
                     message: `No lens path from ${row.type} to ${targetTag}`,
                   });
                 }
-                converted = (yield* applyLensPath(
-                  path,
-                  row.data,
-                )) as Schema.Schema.Type<T>;
+                converted = (yield* applyLensPath(path, row.data)) as Schema.Schema.Type<T>;
+
+                // Validate lens output against target schema
+                try {
+                  validateSync(schema, converted);
+                } catch (error) {
+                  return yield* new ValidationError({
+                    message: `Lens output validation failed for ${targetTag} (from ${row.type}): ${error}`,
+                  });
+                }
               }
 
               results.push({
@@ -369,10 +406,7 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
                   message: `No lens path from ${storedType} to ${targetTag}`,
                 });
               }
-              projected = (yield* applyLensPath(
-                path,
-                stored.data,
-              )) as Record<string, unknown>;
+              projected = (yield* applyLensPath(path, stored.data)) as Record<string, unknown>;
             }
 
             // Apply update
@@ -427,9 +461,7 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
               // Skip this type entirely if any filter references a field
               // that doesn't exist — avoids silently widening the patch scope
               if (filters?.length) {
-                const allFiltersApplicable = filters.every((f) =>
-                  fieldNames.has(f.field),
-                );
+                const allFiltersApplicable = filters.every((f) => fieldNames.has(f.field));
                 if (!allFiltersApplicable) continue;
               }
 
@@ -458,9 +490,7 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
             return yield* persistence.patch({ patches });
           });
 
-        const deleteEntity = (
-          id: string,
-        ): Effect.Effect<void, PersistenceError> =>
+        const deleteEntity = (id: string): Effect.Effect<void, PersistenceError> =>
           persistence.remove(id);
 
         // ── Return service ──────────────────────────────────────────────

@@ -67,5 +67,4 @@ export const makeTestLayer = (config: StoreConfig = testConfig) => {
 export const runStore = <A, E>(
   effect: Effect.Effect<A, E, Store | SqlClient | Persistence>,
   config?: StoreConfig,
-): Promise<A> =>
-  Effect.runPromise(Effect.provide(effect, makeTestLayer(config)));
+): Promise<A> => Effect.runPromise(Effect.provide(effect, makeTestLayer(config)));

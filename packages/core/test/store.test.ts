@@ -1,14 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { Effect, Schema } from "effect";
 import { Store } from "../src/index.ts";
-import type { Filter } from "../src/index.ts";
-import {
-  runStore,
-  PersonV1,
-  PersonV2,
-  PersonV1toV2,
-  testConfig,
-} from "./test-helper.ts";
+import { runStore, PersonV1, PersonV2, PersonV1toV2 } from "./test-helper.ts";
 
 // ─── Save & Load ────────────────────────────────────────────────────────────
 
@@ -67,9 +60,7 @@ describe("Store: saveEntity & loadEntity", () => {
           })
           .pipe(
             Effect.map(() => "success" as const),
-            Effect.catchTag("ValidationError", () =>
-              Effect.succeed("ValidationError" as const),
-            ),
+            Effect.catchTag("ValidationError", () => Effect.succeed("ValidationError" as const)),
           );
       }),
     );
@@ -343,14 +334,12 @@ describe("Store: updateEntity", () => {
     const tag = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        return yield* store
-          .updateEntity(PersonV1, "nonexistent", { email: "new@test.com" })
-          .pipe(
-            Effect.map(() => "success" as const),
-            Effect.catchTag("EntityNotFoundError", () =>
-              Effect.succeed("EntityNotFoundError" as const),
-            ),
-          );
+        return yield* store.updateEntity(PersonV1, "nonexistent", { email: "new@test.com" }).pipe(
+          Effect.map(() => "success" as const),
+          Effect.catchTag("EntityNotFoundError", () =>
+            Effect.succeed("EntityNotFoundError" as const),
+          ),
+        );
       }),
     );
 
