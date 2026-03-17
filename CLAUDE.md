@@ -1,106 +1,53 @@
+# CLAUDE.md
 
-Default to using Bun instead of Node.js.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+## Project Overview
 
-## APIs
+Storic is a schema-versioned datastore with automatic lens-based transformations, built on Effect. It supports evolving data schemas over time via bidirectional lenses with automatic graph-based path discovery.
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+## Commands
 
-## Testing
+All tasks are defined in `mise.toml` and run via `mise run <task>`:
 
-Use `bun test` to run tests.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
+```bash
+mise run build            # Build all packages (uses tsgo)
+mise run check            # Type-check all packages (tsgo -b)
+mise run test             # Run all tests (bun test)
+mise run test:core        # Test @storic/core only
+mise run test:cloudflare  # Test @storic/cloudflare only
+mise run lint             # Lint with oxlint
+mise run fmt              # Format with oxfmt
+mise run fmt:check        # Check formatting
+mise run example          # Run the schema-versioning example
 ```
 
-## Frontend
+To run a single test file: `bun test packages/core/test/store.test.ts`
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+## Monorepo Structure
 
-Server:
+Three packages under `packages/`, all using Effect v4 beta:
 
-```ts#index.ts
-import index from "./index.html"
+- **@storic/core** — Store service, Persistence interface, schema registry, lens graph, error types. No runtime persistence implementation — just the contract.
+- **@storic/sql** — SQL-backed Persistence implementation using Effect's `SqlClient`. Single `entities` table with JSON data column and JSON-extracted indexes.
+- **@storic/cloudflare** — Cloudflare Durable Objects integration. Adapts DO's `SqlStorage` to Effect's `SqlClient`, provides `StoricObject` base class for DOs with automatic Store setup.
 
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
+Dependency flow: `cloudflare → sql → core`
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+## Architecture
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
+**Store** (`core/src/store.ts`) is the main API surface. It manages a **SchemaRegistry** that maps schema tags to schemas and maintains a **LensGraph** — a bidirectional graph of schema transformations. When loading data, the Store finds the shortest transformation path (BFS) between the stored schema version and the requested version, then applies lenses in sequence.
 
-With the following `frontend.tsx`:
+**Persistence** (`core/src/persistence.ts`) is a generic Effect service interface. Implementations (SQL, Cloudflare DO) are provided as Effect Layers.
 
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
+**Schemas** use Effect's `Schema.TaggedStruct` with a `_tag` discriminator that includes a version identifier (e.g., `"Person.v1"`). Schema versions are content-addressable via SHA256 hashing.
 
-// import .css files directly and it works
-import './index.css';
+**Lenses** are defined with `defineLens(SchemaA, SchemaB, { decode, encode })` providing bidirectional transformations. The lens graph composes multi-hop transformations automatically.
 
-const root = createRoot(document.body);
+## Conventions
 
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+- **Runtime:** Bun, not Node.js. Use `bun` for running, testing, installing.
+- **Build:** `tsgo` (TypeScript native compiler from `@typescript/native-preview`).
+- **Linting/Formatting:** `oxlint` and `oxfmt`, not ESLint/Prettier.
+- **Effect patterns:** Services use `Effect.Service`, errors use `Schema.TaggedError`, layers compose via `Layer.provide`. All Store operations return `Effect` values.
+- **No dotenv** — Bun loads `.env` automatically.
