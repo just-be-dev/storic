@@ -26,15 +26,15 @@ run = "tsgo --filter cloudflare"
 [tasks.check]
 description = "Check all packages"
 alias = "type-check"
-run = "tsgo -b --noEmit"
+run = "tsgo -b"
 
 [tasks."check:core"]
 description = "Check @storic/core"
-run = "tsgo -b --noEmit --filter core"
+run = "tsgo -b --filter core"
 
 [tasks."check:cloudflare"]
 description = "Check @storic/cloudflare"
-run = "tsgo -b --noEmit --filter cloudflare"
+run = "tsgo -b --filter cloudflare"
 
 [tasks.test]
 description = "Run tests"
