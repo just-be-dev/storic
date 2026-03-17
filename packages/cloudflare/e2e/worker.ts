@@ -3,7 +3,7 @@
  * HTTP interface that exercises all store operations.
  */
 import { Effect, Schema } from "effect";
-import { StoricObject, Store, defineLens } from "../src/index.ts";
+import { StoricDO, Store, defineLens } from "../src/index.ts";
 import type { StoreConfig } from "../src/index.ts";
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ interface Env {
 
 // ─── Durable Object ─────────────────────────────────────────────────────────
 
-export class TestDO extends StoricObject<Env> {
+export class TestDO extends StoricDO<Env> {
   get config(): StoreConfig {
     return storeConfig;
   }

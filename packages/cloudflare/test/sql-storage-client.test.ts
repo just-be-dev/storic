@@ -2,9 +2,10 @@ import { describe, test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
 import { Effect, Layer, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
-import { Store, defineLens } from "@storic/core";
+import { Store, Persistence, defineLens } from "@storic/core";
 import type { StoreConfig } from "@storic/core";
 import { sqlStorageLayer } from "../src/sql-storage-client.ts";
+import { doStoragePersistence } from "../src/persistence.ts";
 
 // ─── Mock SqlStorage ────────────────────────────────────────────────────────
 
@@ -97,13 +98,15 @@ const testConfig: StoreConfig = {
 // ─── Test helpers ───────────────────────────────────────────────────────────
 
 function makeTestLayer(config: StoreConfig = testConfig) {
-  const sqlLayer = sqlStorageLayer(makeMockSqlStorage());
-  const storeLayer = Store.layer(config).pipe(Layer.provide(sqlLayer));
-  return Layer.mergeAll(storeLayer, sqlLayer);
+  const mockStorage = makeMockSqlStorage();
+  const sqlLayer = sqlStorageLayer(mockStorage);
+  const persistenceLayer = doStoragePersistence(mockStorage);
+  const storeLayer = Store.layer(config).pipe(Layer.provide(persistenceLayer));
+  return Layer.mergeAll(storeLayer, persistenceLayer, sqlLayer);
 }
 
 function runStore<A, E>(
-  effect: Effect.Effect<A, E, Store | SqlClient>,
+  effect: Effect.Effect<A, E, Store | SqlClient | Persistence>,
   config?: StoreConfig,
 ): Promise<A> {
   return Effect.runPromise(Effect.provide(effect, makeTestLayer(config)));

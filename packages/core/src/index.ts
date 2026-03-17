@@ -2,6 +2,22 @@
 export { Store } from "./store.ts";
 export type { StoreShape, StoreError } from "./store.ts";
 
+// ─── Persistence ────────────────────────────────────────────────────────────
+export { Persistence } from "./persistence.ts";
+export type {
+  PersistenceShape,
+  PersistenceRecord,
+  StoredRecord,
+  IndexSpec,
+  InitSpec,
+  QueryParams,
+  Filter,
+  FilterOp,
+  TypePatch,
+  PatchParams,
+} from "./persistence.ts";
+export { computeIndexSpecs } from "./compute-indexes.ts";
+
 // ─── Lens ───────────────────────────────────────────────────────────────────
 export { defineLens } from "./lens.ts";
 
@@ -21,6 +37,7 @@ export {
   ValidationError,
   LensPathNotFoundError,
   TransformError,
+  PersistenceError,
 } from "./errors.ts";
 
 // ─── Types ──────────────────────────────────────────────────────────────────

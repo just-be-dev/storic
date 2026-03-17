@@ -4,11 +4,10 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "composite": true,
-    "types": ["@cloudflare/workers-types", "bun"]
+    "types": ["bun"]
   },
   "include": ["src"],
   "references": [
-    { "path": "../core" },
-    { "path": "../sql" }
+    { "path": "../core" }
   ]
 }

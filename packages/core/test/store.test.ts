@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { Effect, Schema } from "effect";
 import { Store } from "../src/index.ts";
+import type { Filter } from "../src/index.ts";
 import {
   runStore,
   PersonV1,
@@ -354,6 +355,400 @@ describe("Store: updateEntity", () => {
     );
 
     expect(tag).toBe("EntityNotFoundError");
+  });
+});
+
+// ─── Patch Entities ──────────────────────────────────────────────────────────
+
+describe("Store: patchEntities", () => {
+  test("patches all entities across schema versions for shared fields", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+
+        // Save one of each version
+        const alice = yield* store.saveEntity(PersonV1, {
+          firstName: "Alice",
+          lastName: "Smith",
+          email: "alice@example.com",
+        });
+        const bob = yield* store.saveEntity(PersonV2, {
+          fullName: "Bob Jones",
+          email: "bob@example.com",
+          age: 30,
+        });
+
+        // Patch email across all Person records (email exists in both v1 and v2)
+        const affected = yield* store.patchEntities(PersonV2, {
+          email: "redacted@example.com",
+        });
+
+        // Reload and verify
+        const aliceReloaded = yield* store.loadEntity(PersonV1, alice.id);
+        const bobReloaded = yield* store.loadEntity(PersonV2, bob.id);
+
+        return { affected, alice: aliceReloaded.data, bob: bobReloaded.data };
+      }),
+    );
+
+    expect(result.affected).toBe(2);
+    expect(result.alice.email).toBe("redacted@example.com");
+    expect(result.alice.firstName).toBe("Alice"); // untouched
+    expect(result.bob.email).toBe("redacted@example.com");
+    expect(result.bob.fullName).toBe("Bob Jones"); // untouched
+  });
+
+  test("only patches fields that exist in each version", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+
+        const alice = yield* store.saveEntity(PersonV1, {
+          firstName: "Alice",
+          lastName: "Smith",
+          email: "alice@example.com",
+        });
+        const bob = yield* store.saveEntity(PersonV2, {
+          fullName: "Bob Jones",
+          email: "bob@example.com",
+          age: 30,
+        });
+
+        // Patch age — only exists in PersonV2, so PersonV1 records are untouched
+        const affected = yield* store.patchEntities(PersonV2, {
+          age: 99,
+        });
+
+        const aliceReloaded = yield* store.loadEntity(PersonV1, alice.id);
+        const bobReloaded = yield* store.loadEntity(PersonV2, bob.id);
+
+        return { affected, alice: aliceReloaded.data, bob: bobReloaded.data };
+      }),
+    );
+
+    // Only bob's record was patched (age only exists in v2)
+    expect(result.affected).toBe(1);
+    expect(result.alice.email).toBe("alice@example.com"); // untouched
+    expect(result.bob.age).toBe(99);
+  });
+
+  test("returns 0 when no fields overlap with any connected type", async () => {
+    const IsolatedSchema = Schema.TaggedStruct("Isolated.v1", {
+      value: Schema.String,
+    });
+
+    const affected = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.saveEntity(IsolatedSchema, { value: "test" });
+        // Patch a field that doesn't exist in the schema
+        return yield* store.patchEntities(IsolatedSchema, {
+          nonexistent: "nope",
+        } as any);
+      }),
+      {
+        schemas: [IsolatedSchema],
+        lenses: [],
+      },
+    );
+
+    expect(affected).toBe(0);
+  });
+});
+
+// ─── Filters ─────────────────────────────────────────────────────────────────
+
+describe("Store: filters", () => {
+  test("loadEntities with eq filter", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.saveEntity(PersonV1, {
+          firstName: "Alice",
+          lastName: "Smith",
+          email: "alice@example.com",
+        });
+        yield* store.saveEntity(PersonV1, {
+          firstName: "Bob",
+          lastName: "Jones",
+          email: "bob@example.com",
+        });
+
+        return yield* store.loadEntities(PersonV1, {
+          filters: [{ field: "email", op: "eq", value: "alice@example.com" }],
+        });
+      }),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].data.firstName).toBe("Alice");
+  });
+
+  test("loadEntities with neq filter", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.saveEntity(PersonV2, {
+          fullName: "Alice Smith",
+          email: "alice@example.com",
+          age: 25,
+        });
+        yield* store.saveEntity(PersonV2, {
+          fullName: "Bob Jones",
+          email: "bob@example.com",
+          age: 30,
+        });
+
+        return yield* store.loadEntities(PersonV2, {
+          filters: [{ field: "age", op: "neq", value: 25 }],
+        });
+      }),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].data.fullName).toBe("Bob Jones");
+  });
+
+  test("loadEntities with gt/lt filters", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.saveEntity(PersonV2, {
+          fullName: "Young",
+          email: "young@example.com",
+          age: 20,
+        });
+        yield* store.saveEntity(PersonV2, {
+          fullName: "Middle",
+          email: "mid@example.com",
+          age: 35,
+        });
+        yield* store.saveEntity(PersonV2, {
+          fullName: "Old",
+          email: "old@example.com",
+          age: 60,
+        });
+
+        return yield* store.loadEntities(PersonV2, {
+          filters: [
+            { field: "age", op: "gte", value: 30 },
+            { field: "age", op: "lt", value: 50 },
+          ],
+        });
+      }),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].data.fullName).toBe("Middle");
+  });
+
+  test("loadEntities with in filter", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.saveEntity(PersonV1, {
+          firstName: "Alice",
+          lastName: "Smith",
+          email: "alice@example.com",
+        });
+        yield* store.saveEntity(PersonV1, {
+          firstName: "Bob",
+          lastName: "Jones",
+          email: "bob@example.com",
+        });
+        yield* store.saveEntity(PersonV1, {
+          firstName: "Charlie",
+          lastName: "Brown",
+          email: "charlie@example.com",
+        });
+
+        return yield* store.loadEntities(PersonV1, {
+          filters: [
+            {
+              field: "email",
+              op: "in",
+              value: ["alice@example.com", "charlie@example.com"],
+            },
+          ],
+        });
+      }),
+    );
+
+    expect(result).toHaveLength(2);
+    const names = result.map((e) => e.data.firstName).sort();
+    expect(names).toEqual(["Alice", "Charlie"]);
+  });
+
+  test("loadEntities with like filter", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.saveEntity(PersonV1, {
+          firstName: "Alice",
+          lastName: "Smith",
+          email: "alice@example.com",
+        });
+        yield* store.saveEntity(PersonV1, {
+          firstName: "Bob",
+          lastName: "Jones",
+          email: "bob@other.com",
+        });
+
+        return yield* store.loadEntities(PersonV1, {
+          filters: [{ field: "email", op: "like", value: "%@example.com" }],
+        });
+      }),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].data.firstName).toBe("Alice");
+  });
+
+  test("patchEntities with filter only patches matching records", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const alice = yield* store.saveEntity(PersonV1, {
+          firstName: "Alice",
+          lastName: "Smith",
+          email: "alice@example.com",
+        });
+        const bob = yield* store.saveEntity(PersonV1, {
+          firstName: "Bob",
+          lastName: "Jones",
+          email: "bob@example.com",
+        });
+
+        const affected = yield* store.patchEntities(
+          PersonV1,
+          { email: "redacted@example.com" },
+          { filters: [{ field: "firstName", op: "eq", value: "Alice" }] },
+        );
+
+        const aliceReloaded = yield* store.loadEntity(PersonV1, alice.id);
+        const bobReloaded = yield* store.loadEntity(PersonV1, bob.id);
+
+        return { affected, alice: aliceReloaded.data, bob: bobReloaded.data };
+      }),
+    );
+
+    expect(result.affected).toBe(1);
+    expect(result.alice.email).toBe("redacted@example.com");
+    expect(result.bob.email).toBe("bob@example.com"); // untouched
+  });
+
+  test("patchEntities with filter across versions", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const alice = yield* store.saveEntity(PersonV1, {
+          firstName: "Alice",
+          lastName: "Smith",
+          email: "alice@example.com",
+        });
+        const bob = yield* store.saveEntity(PersonV2, {
+          fullName: "Bob Jones",
+          email: "bob@example.com",
+          age: 30,
+        });
+        const charlie = yield* store.saveEntity(PersonV1, {
+          firstName: "Charlie",
+          lastName: "Brown",
+          email: "charlie@other.com",
+        });
+
+        // Patch email for records where email ends with @example.com
+        const affected = yield* store.patchEntities(
+          PersonV2,
+          { email: "redacted@example.com" },
+          { filters: [{ field: "email", op: "like", value: "%@example.com" }] },
+        );
+
+        const aliceR = yield* store.loadEntity(PersonV1, alice.id);
+        const bobR = yield* store.loadEntity(PersonV2, bob.id);
+        const charlieR = yield* store.loadEntity(PersonV1, charlie.id);
+
+        return {
+          affected,
+          alice: aliceR.data.email,
+          bob: bobR.data.email,
+          charlie: charlieR.data.email,
+        };
+      }),
+    );
+
+    expect(result.affected).toBe(2); // alice (v1) + bob (v2)
+    expect(result.alice).toBe("redacted@example.com");
+    expect(result.bob).toBe("redacted@example.com");
+    expect(result.charlie).toBe("charlie@other.com"); // untouched
+  });
+
+  test("filter on v2-only field excludes v1 records from loadEntities", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.saveEntity(PersonV1, {
+          firstName: "Alice",
+          lastName: "Smith",
+          email: "alice@example.com",
+        });
+        yield* store.saveEntity(PersonV2, {
+          fullName: "Bob Jones",
+          email: "bob@example.com",
+          age: 30,
+        });
+        yield* store.saveEntity(PersonV2, {
+          fullName: "Charlie Brown",
+          email: "charlie@example.com",
+          age: 20,
+        });
+
+        // Filter on age (v2-only). V1 records should be excluded entirely,
+        // NOT returned unfiltered.
+        return yield* store.loadEntities(PersonV2, {
+          filters: [{ field: "age", op: "gt", value: 25 }],
+        });
+      }),
+    );
+
+    // Only Bob (age 30) should match. Alice (v1, no age field) must NOT appear.
+    expect(result).toHaveLength(1);
+    expect(result[0].data.fullName).toBe("Bob Jones");
+  });
+
+  test("filter on v2-only field excludes v1 records from patchEntities", async () => {
+    const result = await runStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const alice = yield* store.saveEntity(PersonV1, {
+          firstName: "Alice",
+          lastName: "Smith",
+          email: "alice@example.com",
+        });
+        const bob = yield* store.saveEntity(PersonV2, {
+          fullName: "Bob Jones",
+          email: "bob@example.com",
+          age: 30,
+        });
+
+        // Patch email where age > 25. V1 records don't have age,
+        // so they must NOT be patched.
+        const affected = yield* store.patchEntities(
+          PersonV2,
+          { email: "redacted@example.com" },
+          { filters: [{ field: "age", op: "gt", value: 25 }] },
+        );
+
+        const aliceR = yield* store.loadEntity(PersonV1, alice.id);
+        const bobR = yield* store.loadEntity(PersonV2, bob.id);
+
+        return { affected, alice: aliceR.data.email, bob: bobR.data.email };
+      }),
+    );
+
+    expect(result.affected).toBe(1); // only Bob
+    expect(result.alice).toBe("alice@example.com"); // untouched — safe!
+    expect(result.bob).toBe("redacted@example.com");
   });
 });
 

@@ -2,6 +2,7 @@ import { Console, Effect, Layer, Schema } from "effect";
 import { BunRuntime } from "@effect/platform-bun";
 import { layer as sqliteLayer } from "@effect/sql-sqlite-bun/SqliteClient";
 import { Store, defineLens } from "../packages/core/src/index.ts";
+import { sqlPersistenceLayer } from "../packages/sql/src/index.ts";
 
 // ─── Schema definitions ───────────────────────────────────────────────────────
 
@@ -39,10 +40,11 @@ const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
 // ─── Layer setup ──────────────────────────────────────────────────────────────
 
 const SqlLive = sqliteLayer({ filename: ":memory:" });
+const PersistenceLive = sqlPersistenceLayer.pipe(Layer.provide(SqlLive));
 const StoreLive = Store.layer({
   schemas: [PersonV1, PersonV2],
   lenses: [PersonV1toV2],
-}).pipe(Layer.provide(SqlLive));
+}).pipe(Layer.provide(PersistenceLive));
 
 // ─── Main program ─────────────────────────────────────────────────────────────
 

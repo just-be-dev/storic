@@ -1,13 +1,14 @@
 import { Effect, Layer, Schema, ServiceMap } from "effect";
-import { SqlClient } from "effect/unstable/sql/SqlClient";
-import type { SqlError } from "effect/unstable/sql/SqlError";
 import {
   EntityNotFoundError,
   LensPathNotFoundError,
+  PersistenceError,
   TransformError,
   ValidationError,
 } from "./errors.ts";
-import { syncIndexes } from "./index-sync.ts";
+import { computeIndexSpecs } from "./compute-indexes.ts";
+import { Persistence } from "./persistence.ts";
+import type { Filter, TypePatch } from "./persistence.ts";
 import { SchemaRegistry, getTag } from "./schema-registry.ts";
 import type {
   AnyTaggedStruct,
@@ -31,18 +32,6 @@ function validateSync(schema: AnyTaggedStruct, data: unknown): void {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const generateId = (): string => crypto.randomUUID();
-
-/** Parse a DB row into an EntityRecord. */
-function deserializeRow<T extends AnyTaggedStruct>(
-  row: Record<string, unknown>,
-): EntityRecord<T> {
-  return {
-    id: row.id as string,
-    data: JSON.parse(row.data as string) as Schema.Schema.Type<T>,
-    created_at: row.created_at as number,
-    updated_at: row.updated_at as number,
-  };
-}
 
 /**
  * Apply a lens path to transform data from one schema version to another.
@@ -68,6 +57,15 @@ function applyLensPath(
   });
 }
 
+/**
+ * Get the set of user-facing field names from a TaggedStruct schema (excludes _tag).
+ */
+function getFieldNames(schema: AnyTaggedStruct): Set<string> {
+  const names = new Set(Object.keys(schema.fields));
+  names.delete("_tag");
+  return names;
+}
+
 // ─── Store Error Union ──────────────────────────────────────────────────────
 
 export type StoreError =
@@ -75,7 +73,7 @@ export type StoreError =
   | LensPathNotFoundError
   | ValidationError
   | TransformError
-  | SqlError;
+  | PersistenceError;
 
 // ─── Store Service Shape ────────────────────────────────────────────────────
 
@@ -85,7 +83,7 @@ export interface StoreShape {
     schema: T,
     data: Omit<Schema.Schema.Type<T>, "_tag">,
     opts?: { readonly id?: string },
-  ) => Effect.Effect<EntityRecord<T>, ValidationError | SqlError>;
+  ) => Effect.Effect<EntityRecord<T>, ValidationError | PersistenceError>;
 
   /** Load a single entity by ID, projected to the given schema version. */
   readonly loadEntity: <T extends AnyTaggedStruct>(
@@ -93,7 +91,7 @@ export interface StoreShape {
     id: string,
   ) => Effect.Effect<
     EntityRecord<T>,
-    EntityNotFoundError | LensPathNotFoundError | TransformError | SqlError
+    EntityNotFoundError | LensPathNotFoundError | TransformError | PersistenceError
   >;
 
   /**
@@ -102,10 +100,14 @@ export interface StoreShape {
    */
   readonly loadEntities: <T extends AnyTaggedStruct>(
     schema: T,
-    opts?: { readonly limit?: number; readonly offset?: number },
+    opts?: {
+      readonly filters?: ReadonlyArray<Filter>;
+      readonly limit?: number;
+      readonly offset?: number;
+    },
   ) => Effect.Effect<
     Array<EntityRecord<T>>,
-    LensPathNotFoundError | TransformError | SqlError
+    LensPathNotFoundError | TransformError | PersistenceError
   >;
 
   /** Update an entity's data. */
@@ -120,13 +122,30 @@ export interface StoreShape {
     | LensPathNotFoundError
     | TransformError
     | ValidationError
-    | SqlError
+    | PersistenceError
   >;
+
+  /**
+   * Patch all entities reachable from the given schema type.
+   * For each connected schema version, only fields that exist in that
+   * version are applied. Returns the total number of records updated.
+   */
+  /**
+   * Patch all entities reachable from the given schema type.
+   * For each connected schema version, only fields that exist in that
+   * version are applied. Optional filters narrow which records are patched.
+   * Returns the total number of records updated.
+   */
+  readonly patchEntities: <T extends AnyTaggedStruct>(
+    schema: T,
+    patch: Partial<Omit<Schema.Schema.Type<T>, "_tag">>,
+    opts?: { readonly filters?: ReadonlyArray<Filter> },
+  ) => Effect.Effect<number, PersistenceError>;
 
   /** Delete an entity by ID. */
   readonly deleteEntity: (
     id: string,
-  ) => Effect.Effect<void, SqlError>;
+  ) => Effect.Effect<void, PersistenceError>;
 }
 
 // ─── Store Service ──────────────────────────────────────────────────────────
@@ -135,40 +154,27 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
   "datastore/Store",
 ) {
   /**
-   * Create a Store layer from a StoreConfig and a SqlClient.
+   * Create a Store layer from a StoreConfig and a Persistence backend.
    *
    * On initialization:
-   * 1. Creates the `entities` table (if not exists)
-   * 2. Builds the schema registry and lens graph
-   * 3. Auto-syncs indexes from schema annotations
+   * 1. Builds the schema registry and lens graph
+   * 2. Computes index specs from schema annotations
+   * 3. Calls persistence.initialize() with the index specs
    */
   static readonly layer = (
     config: StoreConfig,
-  ): Layer.Layer<Store, SqlError, SqlClient> =>
+  ): Layer.Layer<Store, PersistenceError, Persistence> =>
     Layer.effect(
       Store,
       Effect.gen(function* () {
-        const sql = yield* SqlClient;
-
-        // ── DDL ─────────────────────────────────────────────────────────
-        yield* sql.unsafe(`
-          CREATE TABLE IF NOT EXISTS entities (
-            id         TEXT PRIMARY KEY,
-            type       TEXT NOT NULL,
-            data       JSON NOT NULL,
-            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-            updated_at INTEGER NOT NULL DEFAULT (unixepoch())
-          )
-        `);
-        yield* sql.unsafe(`
-          CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type)
-        `);
+        const persistence = yield* Persistence;
 
         // ── Schema Registry ─────────────────────────────────────────────
         const registry = new SchemaRegistry(config);
 
-        // ── Auto-sync indexes ───────────────────────────────────────────
-        yield* syncIndexes(registry);
+        // ── Compute and apply indexes ───────────────────────────────────
+        const indexes = computeIndexSpecs(registry);
+        yield* persistence.initialize({ indexes });
 
         // ── Implementation ──────────────────────────────────────────────
 
@@ -176,7 +182,7 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
           schema: T,
           data: Omit<Schema.Schema.Type<T>, "_tag">,
           opts?: { readonly id?: string },
-        ): Effect.Effect<EntityRecord<T>, ValidationError | SqlError> =>
+        ): Effect.Effect<EntityRecord<T>, ValidationError | PersistenceError> =>
           Effect.gen(function* () {
             const tag = getTag(schema);
             const fullData = { _tag: tag, ...data } as unknown as Schema.Schema.Type<T>;
@@ -192,16 +198,18 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
 
             const id = opts?.id ?? generateId();
 
-            yield* sql`
-              INSERT INTO entities (id, type, data)
-              VALUES (${id}, ${tag}, ${JSON.stringify(fullData)})
-            `;
+            const stored = yield* persistence.put({
+              id,
+              type: tag,
+              data: fullData as unknown as Record<string, unknown>,
+            });
 
-            const rows = yield* sql<
-              Record<string, unknown>
-            >`SELECT * FROM entities WHERE id = ${id}`;
-
-            return deserializeRow<T>(rows[0]);
+            return {
+              id: stored.id,
+              data: stored.data as unknown as Schema.Schema.Type<T>,
+              created_at: stored.created_at,
+              updated_at: stored.updated_at,
+            };
           });
 
         const loadEntity = <T extends AnyTaggedStruct>(
@@ -212,28 +220,24 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
           | EntityNotFoundError
           | LensPathNotFoundError
           | TransformError
-          | SqlError
+          | PersistenceError
         > =>
           Effect.gen(function* () {
-            const rows = yield* sql<
-              Record<string, unknown>
-            >`SELECT * FROM entities WHERE id = ${id}`;
+            const stored = yield* persistence.get(id);
 
-            if (rows.length === 0) {
+            if (!stored) {
               return yield* new EntityNotFoundError({
                 entityId: id,
                 message: `Entity not found: ${id}`,
               });
             }
 
-            const row = rows[0];
             const targetTag = getTag(schema);
-            const storedType = row.type as string;
-            const parsed = JSON.parse(row.data as string);
+            const storedType = stored.type;
 
             let converted: Schema.Schema.Type<T>;
             if (storedType === targetTag) {
-              converted = parsed;
+              converted = stored.data as unknown as Schema.Schema.Type<T>;
             } else {
               const path = registry.getPath(storedType, targetTag);
               if (!path) {
@@ -245,70 +249,79 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
               }
               converted = (yield* applyLensPath(
                 path,
-                parsed,
+                stored.data,
               )) as Schema.Schema.Type<T>;
             }
 
             return {
-              id: row.id as string,
+              id: stored.id,
               data: converted,
-              created_at: row.created_at as number,
-              updated_at: row.updated_at as number,
+              created_at: stored.created_at,
+              updated_at: stored.updated_at,
             };
           });
 
         const loadEntities = <T extends AnyTaggedStruct>(
           schema: T,
-          opts?: { readonly limit?: number; readonly offset?: number },
+          opts?: {
+            readonly filters?: ReadonlyArray<Filter>;
+            readonly limit?: number;
+            readonly offset?: number;
+          },
         ): Effect.Effect<
           Array<EntityRecord<T>>,
-          LensPathNotFoundError | TransformError | SqlError
+          LensPathNotFoundError | TransformError | PersistenceError
         > =>
           Effect.gen(function* () {
             const targetTag = getTag(schema);
+            const filters = opts?.filters;
 
-            // Get all tags connected via lenses
-            const connectedTags = registry.getConnectedTags(targetTag);
+            // Get all tags connected via lenses, excluding types that
+            // don't have all filtered fields (to avoid silently widening results)
+            const connectedTags = registry.getConnectedTags(targetTag)
+              .filter((tag) => {
+                if (!filters?.length) return true;
+                const tagSchema = registry.getSchemaByTag(tag);
+                if (!tagSchema) return false;
+                const fieldNames = getFieldNames(tagSchema);
+                return filters.every((f) => fieldNames.has(f.field));
+              });
 
             // Query for all connected types
-            const rows = yield* sql<Record<string, unknown>>`
-              SELECT * FROM entities
-              WHERE type IN ${sql.in(connectedTags)}
-              ORDER BY created_at DESC
-              ${opts?.limit != null ? sql.unsafe(`LIMIT ${opts.limit}`) : sql.unsafe("")}
-              ${opts?.offset != null ? sql.unsafe(`OFFSET ${opts.offset}`) : sql.unsafe("")}
-            `;
+            const rows = yield* persistence.query({
+              types: connectedTags,
+              filters,
+              limit: opts?.limit,
+              offset: opts?.offset,
+            });
 
             // Transform each row to the target schema
             const results: Array<EntityRecord<T>> = [];
 
             for (const row of rows) {
-              const storedType = row.type as string;
-              const parsed = JSON.parse(row.data as string);
-
               let converted: Schema.Schema.Type<T>;
-              if (storedType === targetTag) {
-                converted = parsed;
+              if (row.type === targetTag) {
+                converted = row.data as unknown as Schema.Schema.Type<T>;
               } else {
-                const path = registry.getPath(storedType, targetTag);
+                const path = registry.getPath(row.type, targetTag);
                 if (!path) {
                   return yield* new LensPathNotFoundError({
-                    fromType: storedType,
+                    fromType: row.type,
                     toType: targetTag,
-                    message: `No lens path from ${storedType} to ${targetTag}`,
+                    message: `No lens path from ${row.type} to ${targetTag}`,
                   });
                 }
                 converted = (yield* applyLensPath(
                   path,
-                  parsed,
+                  row.data,
                 )) as Schema.Schema.Type<T>;
               }
 
               results.push({
-                id: row.id as string,
+                id: row.id,
                 data: converted,
-                created_at: row.created_at as number,
-                updated_at: row.updated_at as number,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
               });
             }
 
@@ -326,31 +339,27 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
           | LensPathNotFoundError
           | TransformError
           | ValidationError
-          | SqlError
+          | PersistenceError
         > =>
           Effect.gen(function* () {
             const targetTag = getTag(schema);
 
             // Fetch existing entity
-            const rows = yield* sql<
-              Record<string, unknown>
-            >`SELECT * FROM entities WHERE id = ${id}`;
+            const stored = yield* persistence.get(id);
 
-            if (rows.length === 0) {
+            if (!stored) {
               return yield* new EntityNotFoundError({
                 entityId: id,
                 message: `Entity not found: ${id}`,
               });
             }
 
-            const row = rows[0];
-            const storedType = row.type as string;
-            const existingData = JSON.parse(row.data as string);
+            const storedType = stored.type;
 
             // Project existing data to target schema if needed
             let projected: Record<string, unknown>;
             if (storedType === targetTag) {
-              projected = existingData;
+              projected = stored.data;
             } else {
               const path = registry.getPath(storedType, targetTag);
               if (!path) {
@@ -362,7 +371,7 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
               }
               projected = (yield* applyLensPath(
                 path,
-                existingData,
+                stored.data,
               )) as Record<string, unknown>;
             }
 
@@ -383,27 +392,76 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
             }
 
             // Persist (always stored as the target schema version)
-            yield* sql`
-              UPDATE entities
-              SET type = ${targetTag},
-                  data = ${JSON.stringify(newData)},
-                  updated_at = unixepoch()
-              WHERE id = ${id}
-            `;
+            const updated = yield* persistence.update(id, {
+              type: targetTag,
+              data: newData as unknown as Record<string, unknown>,
+            });
 
-            const updated = yield* sql<
-              Record<string, unknown>
-            >`SELECT * FROM entities WHERE id = ${id}`;
+            return {
+              id: updated.id,
+              data: updated.data as unknown as Schema.Schema.Type<T>,
+              created_at: updated.created_at,
+              updated_at: updated.updated_at,
+            };
+          });
 
-            return deserializeRow<T>(updated[0]);
+        const patchEntities = <T extends AnyTaggedStruct>(
+          schema: T,
+          patch: Partial<Omit<Schema.Schema.Type<T>, "_tag">>,
+          opts?: { readonly filters?: ReadonlyArray<Filter> },
+        ): Effect.Effect<number, PersistenceError> =>
+          Effect.gen(function* () {
+            const targetTag = getTag(schema);
+            const connectedTags = registry.getConnectedTags(targetTag);
+            const patchKeys = Object.keys(patch);
+            const filters = opts?.filters;
+
+            const patches: TypePatch[] = [];
+
+            for (const tag of connectedTags) {
+              const tagSchema = registry.getSchemaByTag(tag);
+              if (!tagSchema) continue;
+
+              const fieldNames = getFieldNames(tagSchema);
+
+              // Skip this type entirely if any filter references a field
+              // that doesn't exist — avoids silently widening the patch scope
+              if (filters?.length) {
+                const allFiltersApplicable = filters.every((f) =>
+                  fieldNames.has(f.field),
+                );
+                if (!allFiltersApplicable) continue;
+              }
+
+              // Filter patch to only include fields present in this schema version
+              const filtered: Record<string, unknown> = {};
+              let hasKeys = false;
+
+              for (const key of patchKeys) {
+                if (fieldNames.has(key)) {
+                  filtered[key] = (patch as Record<string, unknown>)[key];
+                  hasKeys = true;
+                }
+              }
+
+              if (hasKeys) {
+                patches.push({
+                  type: tag,
+                  patch: filtered,
+                  filters,
+                });
+              }
+            }
+
+            if (patches.length === 0) return 0;
+
+            return yield* persistence.patch({ patches });
           });
 
         const deleteEntity = (
           id: string,
-        ): Effect.Effect<void, SqlError> =>
-          Effect.gen(function* () {
-            yield* sql`DELETE FROM entities WHERE id = ${id}`;
-          });
+        ): Effect.Effect<void, PersistenceError> =>
+          persistence.remove(id);
 
         // ── Return service ──────────────────────────────────────────────
 
@@ -412,6 +470,7 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()(
           loadEntity,
           loadEntities,
           updateEntity,
+          patchEntities,
           deleteEntity,
         });
       }),

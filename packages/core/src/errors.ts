@@ -27,3 +27,12 @@ export class TransformError extends Schema.TaggedErrorClass<TransformError>()(
   "TransformError",
   { reason: Schema.String },
 ) {}
+
+/** Persistence backend error. */
+export class PersistenceError extends Schema.TaggedErrorClass<PersistenceError>()(
+  "PersistenceError",
+  {
+    message: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}

@@ -1,8 +1,9 @@
 import { Effect, Layer, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
 import { layer as sqliteLayer } from "@effect/sql-sqlite-bun/SqliteClient";
-import { Store, defineLens } from "../src/index.ts";
+import { Store, defineLens, Persistence } from "../src/index.ts";
 import type { StoreConfig } from "../src/index.ts";
+import { sqlPersistenceLayer } from "@storic/sql";
 
 // ─── Test Schemas ───────────────────────────────────────────────────────────
 
@@ -49,20 +50,22 @@ export const testConfig: StoreConfig = {
 
 /**
  * Creates a fresh in-memory Store + SqlClient layer for each test.
+ * Store → Persistence → SqlClient → SQLite in-memory
  */
 export const makeTestLayer = (config: StoreConfig = testConfig) => {
   const SqlLive = sqliteLayer({ filename: ":memory:" });
-  const StoreLive = Store.layer(config).pipe(Layer.provide(SqlLive));
-  // Merge so both Store and SqlClient are available in tests
-  return Layer.mergeAll(StoreLive, SqlLive);
+  const PersistenceLive = sqlPersistenceLayer.pipe(Layer.provide(SqlLive));
+  const StoreLive = Store.layer(config).pipe(Layer.provide(PersistenceLive));
+  // Merge so Store, Persistence, and SqlClient are all available in tests
+  return Layer.mergeAll(StoreLive, PersistenceLive, SqlLive);
 };
 
 /**
- * Run an Effect program that requires Store (and optionally SqlClient)
+ * Run an Effect program that requires Store (and optionally SqlClient/Persistence)
  * against a fresh in-memory database.
  */
 export const runStore = <A, E>(
-  effect: Effect.Effect<A, E, Store | SqlClient>,
+  effect: Effect.Effect<A, E, Store | SqlClient | Persistence>,
   config?: StoreConfig,
 ): Promise<A> =>
   Effect.runPromise(Effect.provide(effect, makeTestLayer(config)));
