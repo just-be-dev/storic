@@ -11,6 +11,54 @@ let proc: Subprocess;
 let baseUrl: string;
 
 /**
+ * Drain a ReadableStream, appending decoded text to `buffer` and calling
+ * `onData` after each chunk. Runs in the background (never awaited by the
+ * caller) so that the pipe doesn't fill up and block the child process.
+ */
+function drainStream(
+  stream: ReadableStream<Uint8Array>,
+  onData: (accumulated: string) => void,
+): { getBuffer: () => string } {
+  let buffer = "";
+  const decoder = new TextDecoder();
+
+  (async () => {
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        onData(buffer);
+      }
+    } catch {
+      // stream closed — expected during teardown
+    }
+  })();
+
+  return { getBuffer: () => buffer };
+}
+
+/**
+ * Wait for the server to actually accept a request (wrangler may print the
+ * URL before the listener is fully bound).
+ */
+async function waitForReady(url: string, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const resp = await fetch(url);
+      // Any response (even 404) means the server is up
+      await resp.body?.cancel();
+      return;
+    } catch {
+      await Bun.sleep(200);
+    }
+  }
+  throw new Error(`Server at ${url} did not become reachable within ${timeoutMs}ms`);
+}
+
+/**
  * Start wrangler dev as a subprocess and wait for it to print the ready URL.
  */
 async function startWrangler(): Promise<{ proc: Subprocess; url: string }> {
@@ -22,41 +70,43 @@ async function startWrangler(): Promise<{ proc: Subprocess; url: string }> {
       stderr: "pipe",
       env: {
         ...process.env,
-        // Suppress interactive prompts
         WRANGLER_SEND_METRICS: "false",
         CI: "true",
       },
     },
   );
 
-  // Read stdout for the "Ready on" message
+  // Wrangler prints "Ready on …" to either stdout or stderr depending on
+  // version. Drain both streams and resolve as soon as either contains the URL.
   const url = await new Promise<string>((resolve, reject) => {
+    let resolved = false;
     const timer = setTimeout(() => {
-      reject(new Error("Wrangler did not start within 45 seconds"));
+      if (!resolved) {
+        resolved = true;
+        reject(
+          new Error(
+            `Wrangler did not start within 45 seconds.\nstdout: ${stdout.getBuffer()}\nstderr: ${stderr.getBuffer()}`,
+          ),
+        );
+      }
     }, 45_000);
 
-    const reader = child.stdout.getReader();
-    let buffer = "";
-
-    function read() {
-      reader.read().then(({ done, value }) => {
-        if (done) {
-          clearTimeout(timer);
-          reject(new Error(`Wrangler exited before becoming ready. Output: ${buffer}`));
-          return;
-        }
-        buffer += new TextDecoder().decode(value);
-        const match = buffer.match(/Ready on (http:\/\/[^\s]+)/);
-        if (match) {
-          clearTimeout(timer);
-          resolve(match[1]);
-        } else {
-          read();
-        }
-      });
+    function tryResolve(buf: string) {
+      if (resolved) return;
+      const match = buf.match(/Ready on (http:\/\/[^\s]+)/);
+      if (match) {
+        resolved = true;
+        clearTimeout(timer);
+        resolve(match[1]);
+      }
     }
-    read();
+
+    const stdout = drainStream(child.stdout, tryResolve);
+    const stderr = drainStream(child.stderr, tryResolve);
   });
+
+  // Ensure the server is actually accepting connections before returning
+  await waitForReady(url);
 
   return { proc: child, url };
 }
@@ -150,10 +200,20 @@ describe("StoricObject e2e", () => {
   });
 
   test("list all entities as PersonV2", async () => {
+    // Save a known entity so the list is never empty, regardless of test order
+    await jsonFetch("/save-v2", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fullName: "List Test",
+        email: "list@example.com",
+        age: 1,
+      }),
+    });
+
     const entities = await jsonFetch("/list");
 
-    // Should have at least the entities from previous tests
-    expect(entities.length).toBeGreaterThanOrEqual(3);
+    expect(entities.length).toBeGreaterThanOrEqual(1);
     for (const entity of entities) {
       expect(entity.data._tag).toBe("Person.v2");
       expect(entity.data.fullName).toBeDefined();
