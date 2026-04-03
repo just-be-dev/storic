@@ -1,0 +1,36 @@
+{
+  "name": "@storic/automerge",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsgo --build",
+    "check": "tsgo --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@storic/core": "workspace:*",
+    "@automerge/automerge": "^3.0.0",
+    "effect": "4.0.0-beta.29"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10",
+    "@types/node": "^22.0.0",
+    "@typescript/native-preview": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

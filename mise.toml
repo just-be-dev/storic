@@ -50,13 +50,21 @@ run = "bun test"
 description = "Test @storic/core"
 run = "bun test packages/core"
 
+[tasks."test:automerge"]
+description = "Test @storic/automerge"
+run = "bun test packages/automerge"
+
 [tasks."test:cloudflare"]
 description = "Test @storic/cloudflare"
 run = "bun test packages/cloudflare"
 
 [tasks.example]
-description = "Run the example"
+description = "Run the schema-versioning example"
 run = "bun examples/schema-versioning-with-lenses.ts"
+
+[tasks."example:automerge"]
+description = "Run the automerge CRDT sync example"
+run = "bun examples/automerge-crdt-sync.ts"
 
 [tasks.lint]
 description = "Lint all packages"
