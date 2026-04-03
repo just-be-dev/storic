@@ -1,5 +1,6 @@
 import type { Schema } from "effect";
 import type { AnyTaggedStruct, Lens } from "./types.ts";
+import { getTag } from "./schema-registry.ts";
 
 /**
  * Define a bidirectional lens between two TaggedStruct schemas.
@@ -7,17 +8,18 @@ import type { AnyTaggedStruct, Lens } from "./types.ts";
  * The `decode` function converts from `From` → `To` (forward).
  * The `encode` function converts from `To` → `From` (backward).
  *
+ * The `_tag` field is injected automatically — you only need to return
+ * the data fields.
+ *
  * @example
  * ```ts
  * const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
  *   decode: (v1) => ({
- *     _tag: "Person.v2" as const,
  *     fullName: `${v1.firstName} ${v1.lastName}`,
  *     email: v1.email,
  *     age: 0,
  *   }),
  *   encode: (v2) => ({
- *     _tag: "Person.v1" as const,
  *     firstName: v2.fullName.split(" ")[0],
  *     lastName: v2.fullName.split(" ").slice(1).join(" "),
  *     email: v2.email,
@@ -34,16 +36,20 @@ export function defineLens<
   transformation: {
     readonly decode: (
       input: Schema.Schema.Type<From>,
-    ) => Schema.Schema.Type<To>;
+    ) => Omit<Schema.Schema.Type<To>, "_tag">;
     readonly encode: (
       input: Schema.Schema.Type<To>,
-    ) => Schema.Schema.Type<From>;
+    ) => Omit<Schema.Schema.Type<From>, "_tag">;
   },
 ): Lens<From, To> {
+  const toTag = getTag(to);
+  const fromTag = getTag(from);
   return {
     from,
     to,
-    forward: transformation.decode,
-    backward: transformation.encode,
+    forward: (input: Schema.Schema.Type<From>) =>
+      ({ _tag: toTag, ...transformation.decode(input) }) as Schema.Schema.Type<To>,
+    backward: (input: Schema.Schema.Type<To>) =>
+      ({ _tag: fromTag, ...transformation.encode(input) }) as Schema.Schema.Type<From>,
   };
 }

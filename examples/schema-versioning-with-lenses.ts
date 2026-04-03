@@ -25,12 +25,10 @@ type PersonV2 = typeof PersonV2.Type;
 
 const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
   decode: (v1) => ({
-    _tag: "Person.v2" as const,
     fullName: `${v1.firstName} ${v1.lastName}`,
     email: v1.email,
   }),
   encode: (v2) => ({
-    _tag: "Person.v1" as const,
     firstName: v2.fullName.split(" ")[0],
     lastName: v2.fullName.split(" ").slice(1).join(" "),
     email: v2.email,

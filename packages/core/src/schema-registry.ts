@@ -37,11 +37,14 @@ export class SchemaRegistry {
     }
     this.schemas = schemaMap;
 
-    // Build lens graph
+    // Build lens graph, auto-registering any schemas referenced by lenses
     this.lensGraph = new LensGraph();
     for (const lens of config.lenses ?? []) {
       const fromType = getTag(lens.from);
       const toType = getTag(lens.to);
+
+      if (!schemaMap.has(fromType)) schemaMap.set(fromType, lens.from);
+      if (!schemaMap.has(toType)) schemaMap.set(toType, lens.to);
 
       this.lensGraph.register({
         fromType,

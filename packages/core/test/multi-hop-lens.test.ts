@@ -25,12 +25,10 @@ const PersonV3 = Schema.TaggedStruct("MultiPerson.v3", {
 
 const v1tov2 = defineLens(PersonV1, PersonV2, {
   decode: (v1) => ({
-    _tag: "MultiPerson.v2" as const,
     fullName: `${v1.firstName} ${v1.lastName}`,
     email: v1.email,
   }),
   encode: (v2) => ({
-    _tag: "MultiPerson.v1" as const,
     firstName: v2.fullName.split(" ")[0],
     lastName: v2.fullName.split(" ").slice(1).join(" "),
     email: v2.email,
@@ -39,13 +37,11 @@ const v1tov2 = defineLens(PersonV1, PersonV2, {
 
 const v2tov3 = defineLens(PersonV2, PersonV3, {
   decode: (v2) => ({
-    _tag: "MultiPerson.v3" as const,
     fullName: v2.fullName,
     email: v2.email,
     verified: false,
   }),
   encode: (v3) => ({
-    _tag: "MultiPerson.v2" as const,
     fullName: v3.fullName,
     email: v3.email,
   }),

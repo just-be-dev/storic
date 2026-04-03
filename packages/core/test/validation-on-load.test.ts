@@ -21,12 +21,10 @@ describe("Store: lens output validation", () => {
     const brokenLens = defineLens(BrokenV1, BrokenV2, {
       decode: (v1) =>
         ({
-          _tag: "Broken.v2" as const,
           name: v1.name,
           // Deliberately missing required_field
         }) as any,
       encode: (v2) => ({
-        _tag: "Broken.v1" as const,
         name: v2.name,
       }),
     });
@@ -64,12 +62,10 @@ describe("Store: lens output validation", () => {
     const brokenLens = defineLens(BrokenV1, BrokenV2, {
       decode: (v1) =>
         ({
-          _tag: "BrokenMulti.v2" as const,
           name: v1.name,
           // Missing required_field
         }) as any,
       encode: (v2) => ({
-        _tag: "BrokenMulti.v1" as const,
         name: v2.name,
       }),
     });

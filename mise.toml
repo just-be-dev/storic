@@ -1,5 +1,6 @@
 [tools]
 bun = "1.3.10"
+op = "2.32.1"
 
 [settings]
 experimental = true
@@ -11,9 +12,14 @@ postinstall = "bun install"
 [env]
 _.path = "node_modules/.bin"
 
+[tasks.clean]
+description = "Remove dist and tsbuildinfo files"
+run = "rm -rf packages/*/dist packages/*/*.tsbuildinfo"
+
 [tasks.build]
 description = "Build all packages"
-run = "tsgo"
+depends = ["clean"]
+run = "tsgo --build --force"
 
 [tasks."build:core"]
 description = "Build @storic/core"
