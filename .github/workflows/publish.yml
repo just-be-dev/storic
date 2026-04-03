@@ -1,0 +1,62 @@
+name: Publish NPM Packages
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for OIDC
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup mise
+        uses: jdx/mise-action@c1ecc8f748cd28cdeabf76dab3cccde4ce692fe4 # v4
+        with:
+          experimental: true
+
+      - name: Install dependencies
+        run: mise install
+
+      - name: Run tests
+        run: mise run test
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Publish @storic/core
+        id: publish-core
+        continue-on-error: true
+        run: bun scripts/publish-package.ts core
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @storic/sql
+        id: publish-sql
+        continue-on-error: true
+        run: bun scripts/publish-package.ts sql
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @storic/cloudflare
+        id: publish-cloudflare
+        continue-on-error: true
+        run: bun scripts/publish-package.ts cloudflare
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @storic/automerge
+        id: publish-automerge
+        continue-on-error: true
+        run: bun scripts/publish-package.ts automerge
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

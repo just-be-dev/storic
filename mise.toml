@@ -81,3 +81,15 @@ run = "oxfmt --check ."
 [tasks.publish]
 description = "Publish packages to npm"
 run = "bun publish"
+
+[tasks."changelog:entry"]
+run = "bun scripts/changelog-entry.ts"
+description = "Generate changelog entry for a PR"
+
+[tasks."changelog:assemble"]
+run = "bun scripts/assemble-changelog.ts"
+description = "Assemble changelog fragments into CHANGELOG.md"
+
+[tasks."release-notes"]
+run = "bun scripts/release-notes.ts"
+description = "Preview release notes for a package version"
