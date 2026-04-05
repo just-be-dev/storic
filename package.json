@@ -13,9 +13,9 @@
   "type": "module",
   "dependencies": {
     "@automerge/automerge": "^3.2.5",
-    "@effect/platform-bun": "4.0.0-beta.29",
-    "@effect/sql-sqlite-bun": "4.0.0-beta.29",
-    "effect": "4.0.0-beta.29"
+    "@effect/platform-bun": "4.0.0-beta.43",
+    "@effect/sql-sqlite-bun": "4.0.0-beta.43",
+    "effect": "4.0.0-beta.43"
   },
   "devDependencies": {
     "@types/bun": "latest",

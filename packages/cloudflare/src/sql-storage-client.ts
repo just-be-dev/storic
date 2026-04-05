@@ -15,7 +15,7 @@ import * as Stream from "effect/Stream";
 import * as Reactivity from "effect/unstable/reactivity/Reactivity";
 import * as Client from "effect/unstable/sql/SqlClient";
 import type { Connection } from "effect/unstable/sql/SqlConnection";
-import { SqlError } from "effect/unstable/sql/SqlError";
+import { SqlError, classifySqliteError } from "effect/unstable/sql/SqlError";
 import * as Statement from "effect/unstable/sql/Statement";
 
 const ATTR_DB_SYSTEM_NAME = "db.system.name";
@@ -36,7 +36,10 @@ function makeSqlStorageConnection(sql: SqlStorage): Connection {
   ): Effect.Effect<Array<any>, SqlError> =>
     Effect.try({
       try: () => sql.exec(query, ...params).toArray(),
-      catch: (cause) => new SqlError({ cause, message: "Failed to execute statement" }),
+      catch: (cause) =>
+        new SqlError({
+          reason: classifySqliteError(cause, { message: "Failed to execute statement" }),
+        }),
     });
 
   const runValues = (
@@ -53,7 +56,10 @@ function makeSqlStorageConnection(sql: SqlStorage): Connection {
         }
         return rows;
       },
-      catch: (cause) => new SqlError({ cause, message: "Failed to execute statement" }),
+      catch: (cause) =>
+        new SqlError({
+          reason: classifySqliteError(cause, { message: "Failed to execute statement" }),
+        }),
     });
 
   return identity<Connection>({

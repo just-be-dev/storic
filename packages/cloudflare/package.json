@@ -1,6 +1,6 @@
 {
   "name": "@storic/cloudflare",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/just-be-dev/storic.git",
@@ -31,7 +31,7 @@
   "dependencies": {
     "@storic/core": "workspace:*",
     "@storic/sql": "workspace:*",
-    "effect": "4.0.0-beta.29"
+    "effect": "4.0.0-beta.43"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260307.1",
