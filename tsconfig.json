@@ -17,7 +17,8 @@
     { "path": "./packages/core" },
     { "path": "./packages/sql" },
     { "path": "./packages/automerge" },
-    { "path": "./packages/cloudflare" }
+    { "path": "./packages/cloudflare" },
+    { "path": "./packages/tinybase" }
   ],
   "files": []
 }
