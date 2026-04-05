@@ -1,0 +1,6 @@
+pre-commit:
+  jobs:
+    - name: format
+      glob: "*.{js,ts,jsx,tsx}"
+      stage_fixed: true
+      run: oxfmt {staged_files}
