@@ -60,3 +60,10 @@ jobs:
         run: bun scripts/publish-package.ts automerge
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish @storic/tinybase
+        id: publish-tinybase
+        continue-on-error: true
+        run: bun scripts/publish-package.ts tinybase
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
