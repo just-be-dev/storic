@@ -7,14 +7,14 @@
     "bindings": [
       {
         "name": "TEST_DO",
-        "class_name": "TestDO"
-      }
-    ]
+        "class_name": "TestDO",
+      },
+    ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["TestDO"]
-    }
-  ]
+      "new_sqlite_classes": ["TestDO"],
+    },
+  ],
 }

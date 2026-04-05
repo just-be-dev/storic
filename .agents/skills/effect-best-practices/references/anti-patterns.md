@@ -11,32 +11,33 @@ These patterns are **never acceptable** in Effect v4 code. Each is listed with r
 ```typescript
 // FORBIDDEN
 export class UserService extends ServiceMap.Service<UserService, UserServiceShape>()(
-    "app/UserService"
+  "app/UserService",
 ) {
-    static readonly layer = Layer.effect(
-        UserService,
-        Effect.gen(function* () {
-            const repo = yield* UserRepo
+  static readonly layer = Layer.effect(
+    UserService,
+    Effect.gen(function* () {
+      const repo = yield* UserRepo;
 
-            const findById = (id: UserId) => {
-                // Running effects synchronously breaks composition
-                const user = Effect.runSync(repo.findById(id))
-                return user
-            }
+      const findById = (id: UserId) => {
+        // Running effects synchronously breaks composition
+        const user = Effect.runSync(repo.findById(id));
+        return user;
+      };
 
-            return UserService.of({ findById })
-        })
-    )
+      return UserService.of({ findById });
+    }),
+  );
 }
 ```
 
 **Why:** Breaks Effect's composition model, loses error handling, can't be tested, loses tracing. `runSync` will throw on async effects; `runPromise` escapes the Effect world entirely.
 
 **Correct:**
+
 ```typescript
 const findById = Effect.fn("UserService.findById")(function* (id: UserId) {
-    return yield* repo.findById(id)
-})
+  return yield* repo.findById(id);
+});
 ```
 
 ---
@@ -45,29 +46,32 @@ const findById = Effect.fn("UserService.findById")(function* (id: UserId) {
 
 ```typescript
 // FORBIDDEN
-yield* Effect.gen(function* () {
-    const user = yield* repo.findById(id)
+yield *
+  Effect.gen(function* () {
+    const user = yield* repo.findById(id);
     if (!user) {
-        throw new Error("User not found") // Bypasses Effect error channel
+      throw new Error("User not found"); // Bypasses Effect error channel
     }
-    return user
-})
+    return user;
+  });
 ```
 
 **Why:** Throws bypass Effect's typed error channel, can't be caught with `catchTag`, breaks type safety. The error becomes a defect instead of a tracked failure.
 
 **Correct:**
+
 ```typescript
-yield* Effect.gen(function* () {
-    const user = yield* repo.findById(id)
+yield *
+  Effect.gen(function* () {
+    const user = yield* repo.findById(id);
     if (!user) {
-        // Option 1: yield* a tagged error directly
-        return yield* new UserNotFoundError({ userId: id, message: "Not found" })
-        // Option 2: Effect.fail
-        return yield* Effect.fail(new UserNotFoundError({ userId: id, message: "Not found" }))
+      // Option 1: yield* a tagged error directly
+      return yield* new UserNotFoundError({ userId: id, message: "Not found" });
+      // Option 2: Effect.fail
+      return yield* Effect.fail(new UserNotFoundError({ userId: id, message: "Not found" }));
     }
-    return user
-})
+    return user;
+  });
 ```
 
 ---
@@ -76,23 +80,24 @@ yield* Effect.gen(function* () {
 
 ```typescript
 // FORBIDDEN (Effect.catch is the v4 rename of v3's Effect.catchAll)
-yield* someEffect.pipe(
-    Effect.catch((err) =>
-        Effect.fail(new GenericError({ message: "Something failed" }))
-    )
-)
+yield *
+  someEffect.pipe(
+    Effect.catch((err) => Effect.fail(new GenericError({ message: "Something failed" }))),
+  );
 ```
 
 **Why:** Collapses all error types into one generic error. Loses specific error information, makes debugging harder, prevents specific error handling downstream, and the frontend can't show targeted messages.
 
 **Correct:**
+
 ```typescript
-yield* someEffect.pipe(
+yield *
+  someEffect.pipe(
     Effect.catchTags({
-        DatabaseError: (err) => Effect.fail(new ServiceUnavailableError({ message: err.message })),
-        ValidationError: (err) => Effect.fail(new BadRequestError({ message: err.message })),
+      DatabaseError: (err) => Effect.fail(new ServiceUnavailableError({ message: err.message })),
+      ValidationError: (err) => Effect.fail(new BadRequestError({ message: err.message })),
     }),
-)
+  );
 ```
 
 ---
@@ -101,20 +106,21 @@ yield* someEffect.pipe(
 
 ```typescript
 // FORBIDDEN
-const data = someValue as any
-const result = (await fetch(url)) as unknown as MyType
+const data = someValue as any;
+const result = (await fetch(url)) as unknown as MyType;
 ```
 
 **Why:** Completely bypasses type safety, can cause runtime errors, loses Effect's type guarantees.
 
 **Correct:**
+
 ```typescript
 // Use Schema for parsing unknown data
-const result = yield* Schema.decodeUnknown(MyType)(someValue)
+const result = yield * Schema.decodeUnknown(MyType)(someValue);
 
 // Or explicit type guards
 if (isMyType(someValue)) {
-    // Now safely typed
+  // Now safely typed
 }
 ```
 
@@ -124,42 +130,46 @@ if (isMyType(someValue)) {
 
 ```typescript
 // FORBIDDEN
-export class UserService extends ServiceMap.Service<UserService, {
-    readonly findById: (id: UserId) => Promise<User>  // Promise instead of Effect
-}>()(
-    "app/UserService"
-) {
-    static readonly layer = Layer.effect(
-        UserService,
-        Effect.gen(function* () {
-            return UserService.of({
-                findById: async (id) => { /* ... */ }  // async/Promise
-            })
-        })
-    )
+export class UserService extends ServiceMap.Service<
+  UserService,
+  {
+    readonly findById: (id: UserId) => Promise<User>; // Promise instead of Effect
+  }
+>()("app/UserService") {
+  static readonly layer = Layer.effect(
+    UserService,
+    Effect.gen(function* () {
+      return UserService.of({
+        findById: async (id) => {
+          /* ... */
+        }, // async/Promise
+      });
+    }),
+  );
 }
 ```
 
 **Why:** Loses Effect's typed error handling, can't compose with other Effects, loses tracing/metrics, breaks the Effect composition model.
 
 **Correct:**
+
 ```typescript
 interface UserServiceShape {
-    readonly findById: (id: UserId) => Effect.Effect<User, UserNotFoundError>
+  readonly findById: (id: UserId) => Effect.Effect<User, UserNotFoundError>;
 }
 
 export class UserService extends ServiceMap.Service<UserService, UserServiceShape>()(
-    "app/UserService"
+  "app/UserService",
 ) {
-    static readonly layer = Layer.effect(
-        UserService,
-        Effect.gen(function* () {
-            const findById = Effect.fn("UserService.findById")(function* (id: UserId) {
-                // ...
-            })
-            return UserService.of({ findById })
-        })
-    )
+  static readonly layer = Layer.effect(
+    UserService,
+    Effect.gen(function* () {
+      const findById = Effect.fn("UserService.findById")(function* (id: UserId) {
+        // ...
+      });
+      return UserService.of({ findById });
+    }),
+  );
 }
 ```
 
@@ -169,16 +179,17 @@ export class UserService extends ServiceMap.Service<UserService, UserServiceShap
 
 ```typescript
 // FORBIDDEN
-console.log("Processing order:", orderId)
-console.error("Error:", error)
+console.log("Processing order:", orderId);
+console.error("Error:", error);
 ```
 
 **Why:** Not structured, not captured by Effect's logging/telemetry system, lost in production observability pipelines.
 
 **Correct:**
+
 ```typescript
-yield* Effect.log("Processing order", { orderId })
-yield* Effect.logError("Operation failed", { error: String(error) })
+yield * Effect.log("Processing order", { orderId });
+yield * Effect.logError("Operation failed", { error: String(error) });
 ```
 
 ---
@@ -187,18 +198,21 @@ yield* Effect.logError("Operation failed", { error: String(error) })
 
 ```typescript
 // FORBIDDEN
-const apiKey = process.env.API_KEY
-const port = parseInt(process.env.PORT || "3000")
+const apiKey = process.env.API_KEY;
+const port = parseInt(process.env.PORT || "3000");
 ```
 
 **Why:** No validation, no type safety, fails silently if missing, hard to test, not composable.
 
 **Correct:**
+
 ```typescript
-const config = yield* Config.all({
+const config =
+  yield *
+  Config.all({
     apiKey: Config.redacted("API_KEY"),
     port: Config.integer("PORT").pipe(Config.withDefault(3000)),
-})
+  });
 ```
 
 ---
@@ -208,27 +222,28 @@ const config = yield* Config.all({
 ```typescript
 // FORBIDDEN (deprecated)
 const secretConfig = Config.all({
-    apiKey: Config.secret("API_KEY"),
-    dbPassword: Config.secret("DB_PASSWORD"),
-})
+  apiKey: Config.secret("API_KEY"),
+  dbPassword: Config.secret("DB_PASSWORD"),
+});
 ```
 
 **Why:** `Config.secret` is deprecated. Use `Config.redacted` instead, which provides the same functionality with better naming.
 
 **Correct:**
+
 ```typescript
-import { Config, Redacted } from "effect"
+import { Config, Redacted } from "effect";
 
 const secretConfig = Config.all({
-    apiKey: Config.redacted("API_KEY"),           // Returns Redacted<string>
-    dbPassword: Config.redacted("DB_PASSWORD"),
-})
+  apiKey: Config.redacted("API_KEY"), // Returns Redacted<string>
+  dbPassword: Config.redacted("DB_PASSWORD"),
+});
 
 // Using redacted values
 const program = Effect.gen(function* () {
-    const { apiKey } = yield* secretConfig
-    const key = Redacted.value(apiKey)  // Unwrap when needed
-})
+  const { apiKey } = yield* secretConfig;
+  const key = Redacted.value(apiKey); // Unwrap when needed
+});
 ```
 
 ---
@@ -238,21 +253,22 @@ const program = Effect.gen(function* () {
 ```typescript
 // FORBIDDEN
 type User = {
-    name: string
-    bio: string | null
-    avatar: string | undefined
-}
+  name: string;
+  bio: string | null;
+  avatar: string | undefined;
+};
 ```
 
 **Why:** Null/undefined handling is error-prone, loses the explicit "absence" semantics, doesn't compose with Effect's Option-based patterns.
 
 **Correct:**
+
 ```typescript
 const User = Schema.Struct({
-    name: Schema.String,
-    bio: Schema.Option(Schema.String),
-    avatar: Schema.Option(Schema.String),
-})
+  name: Schema.String,
+  bio: Schema.Option(Schema.String),
+  avatar: Schema.Option(Schema.String),
+});
 ```
 
 ---
@@ -261,25 +277,27 @@ const User = Schema.Struct({
 
 ```typescript
 // FORBIDDEN
-const user = Option.getOrThrow(maybeUser)
-const name = pipe(maybeName, Option.getOrThrow)
+const user = Option.getOrThrow(maybeUser);
+const name = pipe(maybeName, Option.getOrThrow);
 ```
 
 **Why:** Throws exceptions, bypasses Effect's error handling, fails at runtime instead of compile time.
 
 **Correct:**
+
 ```typescript
 // Handle both cases explicitly
-yield* Option.match(maybeUser, {
+yield *
+  Option.match(maybeUser, {
     onNone: () => Effect.fail(new UserNotFoundError({ userId, message: "Not found" })),
     onSome: Effect.succeed,
-})
+  });
 
 // Or provide a default
-const name = Option.getOrElse(maybeName, () => "Anonymous")
+const name = Option.getOrElse(maybeName, () => "Anonymous");
 
 // Or use Option.map for transformations
-const upperName = Option.map(maybeName, (n) => n.toUpperCase())
+const upperName = Option.map(maybeName, (n) => n.toUpperCase());
 ```
 
 ---
@@ -291,56 +309,62 @@ These are v3 APIs. Neither exists in Effect v4.
 ```typescript
 // FORBIDDEN — v3 Effect.Service
 export class UserService extends Effect.Service<UserService>()("UserService", {
-    accessors: true,
-    dependencies: [UserRepo.Default],
-    effect: Effect.gen(function* () { /* ... */ }),
+  accessors: true,
+  dependencies: [UserRepo.Default],
+  effect: Effect.gen(function* () {
+    /* ... */
+  }),
 }) {}
 
 // FORBIDDEN — v3 Context.Tag
 export class UserService extends Context.Tag("UserService")<
-    UserService,
-    { findById: (id: UserId) => Effect.Effect<User, UserNotFoundError> }
+  UserService,
+  { findById: (id: UserId) => Effect.Effect<User, UserNotFoundError> }
 >() {
-    static Default = Layer.effect(this, Effect.gen(function* () { /* ... */ }))
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      /* ... */
+    }),
+  );
 }
 ```
 
 **Why:** `Effect.Service` and `Context.Tag` do not exist in v4. `accessors`, `dependencies`, and `.Default` are all v3 concepts. Proxy accessors (`MyService.method()`) are removed in v4.
 
 **Correct:**
+
 ```typescript
-import { ServiceMap, Layer, Effect } from "effect"
+import { ServiceMap, Layer, Effect } from "effect";
 
 interface UserServiceShape {
-    readonly findById: (id: UserId) => Effect.Effect<User, UserNotFoundError>
+  readonly findById: (id: UserId) => Effect.Effect<User, UserNotFoundError>;
 }
 
 export class UserService extends ServiceMap.Service<UserService, UserServiceShape>()(
-    "app/UserService"
+  "app/UserService",
 ) {
-    // Layer as static property, provide deps with Layer.provide
-    static readonly layer = Layer.effect(
-        UserService,
-        Effect.gen(function* () {
-            const repo = yield* UserRepo
+  // Layer as static property, provide deps with Layer.provide
+  static readonly layer = Layer.effect(
+    UserService,
+    Effect.gen(function* () {
+      const repo = yield* UserRepo;
 
-            const findById = Effect.fn("UserService.findById")(function* (id: UserId) {
-                return yield* repo.findById(id)
-            })
+      const findById = Effect.fn("UserService.findById")(function* (id: UserId) {
+        return yield* repo.findById(id);
+      });
 
-            return UserService.of({ findById })
-        })
-    ).pipe(
-        Layer.provide(UserRepo.layer),
-    )
+      return UserService.of({ findById });
+    }),
+  ).pipe(Layer.provide(UserRepo.layer));
 }
 
 // Usage — must yield* the service first, no proxy accessors
 const program = Effect.gen(function* () {
-    const svc = yield* UserService
-    const user = yield* svc.findById(userId)
-    return user
-})
+  const svc = yield* UserService;
+  const user = yield* svc.findById(userId);
+  return user;
+});
 ```
 
 ---
@@ -349,25 +373,26 @@ const program = Effect.gen(function* () {
 
 ```typescript
 // FORBIDDEN — v3 proxy accessor pattern
-const user = yield* UserService.findById(userId)
+const user = yield * UserService.findById(userId);
 
 // Also FORBIDDEN — v3 accessor style
-const result = UserService.create(input)
+const result = UserService.create(input);
 ```
 
 **Why:** Proxy accessors were removed in v4. `ServiceMap.Service` does not generate them. Attempting to call `MyService.method()` directly will fail at runtime.
 
 **Correct:**
+
 ```typescript
 // yield* the service, then call methods on the instance
 const program = Effect.gen(function* () {
-    const userService = yield* UserService
-    const user = yield* userService.findById(userId)
-    return user
-})
+  const userService = yield* UserService;
+  const user = yield* userService.findById(userId);
+  return user;
+});
 
 // Or use Service.use for one-shot access
-const program = UserService.use((svc) => svc.findById(userId))
+const program = UserService.use((svc) => svc.findById(userId));
 ```
 
 ---
@@ -377,21 +402,22 @@ const program = UserService.use((svc) => svc.findById(userId))
 ```typescript
 // FORBIDDEN — v3 API
 export class UserNotFoundError extends Schema.TaggedError<UserNotFoundError>()(
-    "UserNotFoundError",
-    { userId: Schema.String, message: Schema.String },
+  "UserNotFoundError",
+  { userId: Schema.String, message: Schema.String },
 ) {}
 ```
 
 **Why:** `Schema.TaggedError` is the v3 API. In v4, use `Schema.TaggedErrorClass`.
 
 **Correct:**
+
 ```typescript
 export class UserNotFoundError extends Schema.TaggedErrorClass<UserNotFoundError>()(
-    "UserNotFoundError",
-    {
-        userId: Schema.String,
-        message: Schema.String,
-    }
+  "UserNotFoundError",
+  {
+    userId: Schema.String,
+    message: Schema.String,
+  },
 ) {}
 ```
 
@@ -401,24 +427,27 @@ export class UserNotFoundError extends Schema.TaggedErrorClass<UserNotFoundError
 
 ```typescript
 // FORBIDDEN (in most cases)
-yield* someEffect.pipe(Effect.orDie)
+yield * someEffect.pipe(Effect.orDie);
 ```
 
 **Why:** Converts recoverable errors to defects (unrecoverable), loses error information, makes failures impossible to handle downstream.
 
 **Acceptable exceptions:**
+
 - Truly unrecoverable situations (invalid program state)
 - After exhausting all recovery options
 - In test setup code
 
 **Correct:**
+
 ```typescript
 // Handle errors explicitly
-yield* someEffect.pipe(
+yield *
+  someEffect.pipe(
     Effect.catchTag("RecoverableError", (err) =>
-        Effect.fail(new DomainError({ message: err.message }))
+      Effect.fail(new DomainError({ message: err.message })),
     ),
-)
+  );
 ```
 
 ---
@@ -427,20 +456,20 @@ yield* someEffect.pipe(
 
 ```typescript
 // FORBIDDEN
-yield* effect.pipe(
-    Effect.mapError((err) => new GenericError({ message: String(err) }))
-)
+yield * effect.pipe(Effect.mapError((err) => new GenericError({ message: String(err) })));
 ```
 
 **Why:** Collapses all error types into one, loses type discrimination, prevents `catchTag`-based handling downstream.
 
 **Correct:**
+
 ```typescript
-yield* effect.pipe(
+yield *
+  effect.pipe(
     Effect.catchTag("SpecificError", (err) =>
-        Effect.fail(new MappedError({ message: err.message }))
+      Effect.fail(new MappedError({ message: err.message })),
     ),
-)
+  );
 ```
 
 ---
@@ -449,25 +478,24 @@ yield* effect.pipe(
 
 ```typescript
 // FORBIDDEN
-const result = await someEffect.pipe(
-    Effect.runPromise,
-).then(data => {
-    // Mixing Promise chain with Effect
-    return Effect.runPromise(anotherEffect(data))
-})
+const result = await someEffect.pipe(Effect.runPromise).then((data) => {
+  // Mixing Promise chain with Effect
+  return Effect.runPromise(anotherEffect(data));
+});
 ```
 
 **Why:** Loses Effect composition benefits, error handling becomes inconsistent, breaks tracing, creates multiple independent runtimes.
 
 **Correct:**
+
 ```typescript
 const program = Effect.gen(function* () {
-    const data = yield* someEffect
-    return yield* anotherEffect(data)
-})
+  const data = yield* someEffect;
+  return yield* anotherEffect(data);
+});
 
 // Single runPromise at the edge
-const result = await Effect.runPromise(program)
+const result = await Effect.runPromise(program);
 ```
 
 ---
@@ -476,19 +504,22 @@ const result = await Effect.runPromise(program)
 
 ```typescript
 // FORBIDDEN
-let counter = 0
-const increment = Effect.sync(() => { counter++ })
+let counter = 0;
+const increment = Effect.sync(() => {
+  counter++;
+});
 ```
 
 **Why:** Race conditions in concurrent code, not testable, not composable, breaks referential transparency.
 
 **Correct:**
+
 ```typescript
 const program = Effect.gen(function* () {
-    const counter = yield* Ref.make(0)
-    yield* Ref.update(counter, (n) => n + 1)
-    return yield* Ref.get(counter)
-})
+  const counter = yield* Ref.make(0);
+  yield* Ref.update(counter, (n) => n + 1);
+  return yield* Ref.get(counter);
+});
 ```
 
 ---
@@ -497,17 +528,18 @@ const program = Effect.gen(function* () {
 
 ```typescript
 // FORBIDDEN
-const now = new Date()
-const timestamp = Date.now()
+const now = new Date();
+const timestamp = Date.now();
 ```
 
 **Why:** Not testable, introduces non-determinism, hard to mock in tests. Effect provides `Clock` for testable time access.
 
 **Correct:**
-```typescript
-import { Clock } from "effect"
 
-const now = yield* Clock.currentTimeMillis
+```typescript
+import { Clock } from "effect";
+
+const now = yield * Clock.currentTimeMillis;
 ```
 
 ---
@@ -517,50 +549,48 @@ const now = yield* Clock.currentTimeMillis
 ```typescript
 // FORBIDDEN — layer uses UserRepo but doesn't provide it
 export class OrderService extends ServiceMap.Service<OrderService, OrderServiceShape>()(
-    "app/OrderService"
+  "app/OrderService",
 ) {
-    static readonly layer = Layer.effect(
-        OrderService,
-        Effect.gen(function* () {
-            const users = yield* UserService  // Dependency used but not provided!
-            const repo = yield* OrderRepo     // Another leaked dependency!
+  static readonly layer = Layer.effect(
+    OrderService,
+    Effect.gen(function* () {
+      const users = yield* UserService; // Dependency used but not provided!
+      const repo = yield* OrderRepo; // Another leaked dependency!
 
-            const create = Effect.fn("OrderService.create")(function* (input: CreateOrderInput) {
-                const user = yield* users.findById(input.userId)
-                // ...
-            })
+      const create = Effect.fn("OrderService.create")(function* (input: CreateOrderInput) {
+        const user = yield* users.findById(input.userId);
+        // ...
+      });
 
-            return OrderService.of({ create })
-        })
-    )
-    // Missing: .pipe(Layer.provide(UserService.layer), Layer.provide(OrderRepo.layer))
+      return OrderService.of({ create });
+    }),
+  );
+  // Missing: .pipe(Layer.provide(UserService.layer), Layer.provide(OrderRepo.layer))
 }
 ```
 
 **Why:** Every consumer of `OrderService.layer` must manually provide the missing dependencies. This is error-prone, verbose, and easy to forget — causing runtime failures instead of compile-time errors at the layer definition.
 
 **Correct:**
+
 ```typescript
 export class OrderService extends ServiceMap.Service<OrderService, OrderServiceShape>()(
-    "app/OrderService"
+  "app/OrderService",
 ) {
-    static readonly layer = Layer.effect(
-        OrderService,
-        Effect.gen(function* () {
-            const users = yield* UserService
-            const repo = yield* OrderRepo
+  static readonly layer = Layer.effect(
+    OrderService,
+    Effect.gen(function* () {
+      const users = yield* UserService;
+      const repo = yield* OrderRepo;
 
-            const create = Effect.fn("OrderService.create")(function* (input: CreateOrderInput) {
-                const user = yield* users.findById(input.userId)
-                // ...
-            })
+      const create = Effect.fn("OrderService.create")(function* (input: CreateOrderInput) {
+        const user = yield* users.findById(input.userId);
+        // ...
+      });
 
-            return OrderService.of({ create })
-        })
-    ).pipe(
-        Layer.provide(UserService.layer),
-        Layer.provide(OrderRepo.layer),
-    )
+      return OrderService.of({ create });
+    }),
+  ).pipe(Layer.provide(UserService.layer), Layer.provide(OrderRepo.layer));
 }
 ```
 

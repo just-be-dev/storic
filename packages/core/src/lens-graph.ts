@@ -99,9 +99,7 @@ export class LensGraph {
 
     // BFS to find shortest path
     const visited = new Set<string>([fromType]);
-    const queue: Array<{ type: string; path: LensPathStep[] }> = [
-      { type: fromType, path: [] },
-    ];
+    const queue: Array<{ type: string; path: LensPathStep[] }> = [{ type: fromType, path: [] }];
 
     while (queue.length > 0) {
       const { type, path } = queue.shift()!;

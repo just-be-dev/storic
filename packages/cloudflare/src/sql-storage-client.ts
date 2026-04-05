@@ -36,8 +36,7 @@ function makeSqlStorageConnection(sql: SqlStorage): Connection {
   ): Effect.Effect<Array<any>, SqlError> =>
     Effect.try({
       try: () => sql.exec(query, ...params).toArray(),
-      catch: (cause) =>
-        new SqlError({ cause, message: "Failed to execute statement" }),
+      catch: (cause) => new SqlError({ cause, message: "Failed to execute statement" }),
     });
 
   const runValues = (
@@ -54,15 +53,12 @@ function makeSqlStorageConnection(sql: SqlStorage): Connection {
         }
         return rows;
       },
-      catch: (cause) =>
-        new SqlError({ cause, message: "Failed to execute statement" }),
+      catch: (cause) => new SqlError({ cause, message: "Failed to execute statement" }),
     });
 
   return identity<Connection>({
     execute(query, params, transformRows) {
-      return transformRows
-        ? Effect.map(run(query, params), transformRows)
-        : run(query, params);
+      return transformRows ? Effect.map(run(query, params), transformRows) : run(query, params);
     },
     executeRaw(query, params) {
       return run(query, params);
@@ -102,9 +98,7 @@ function makeSqlStorageConnection(sql: SqlStorage): Connection {
  * }
  * ```
  */
-export const sqlStorageLayer = (
-  sql: SqlStorage,
-): Layer.Layer<Client.SqlClient> => {
+export const sqlStorageLayer = (sql: SqlStorage): Layer.Layer<Client.SqlClient> => {
   const connection = makeSqlStorageConnection(sql);
   const compiler = Statement.makeCompilerSqlite();
 
@@ -117,9 +111,8 @@ export const sqlStorageLayer = (
         const fiber = Fiber.getCurrent()!;
         const scope = ServiceMap.getUnsafe(fiber.services, Scope.Scope);
         return Effect.as(
-          Effect.tap(
-            restore(semaphore.take(1)),
-            () => Scope.addFinalizer(scope, semaphore.release(1)),
+          Effect.tap(restore(semaphore.take(1)), () =>
+            Scope.addFinalizer(scope, semaphore.release(1)),
           ),
           connection,
         );

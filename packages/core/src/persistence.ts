@@ -79,24 +79,16 @@ export interface PersistenceShape {
    * Initialize the persistence backend.
    * Creates storage structures and applies the declared indexes.
    */
-  readonly initialize: (
-    spec: InitSpec,
-  ) => Effect.Effect<void, PersistenceError>;
+  readonly initialize: (spec: InitSpec) => Effect.Effect<void, PersistenceError>;
 
   /** Insert a new record. */
-  readonly put: (
-    record: PersistenceRecord,
-  ) => Effect.Effect<StoredRecord, PersistenceError>;
+  readonly put: (record: PersistenceRecord) => Effect.Effect<StoredRecord, PersistenceError>;
 
   /** Fetch a single record by ID. Returns null if not found. */
-  readonly get: (
-    id: string,
-  ) => Effect.Effect<StoredRecord | null, PersistenceError>;
+  readonly get: (id: string) => Effect.Effect<StoredRecord | null, PersistenceError>;
 
   /** Query records by type(s) with optional field-level filters. */
-  readonly query: (
-    params: QueryParams,
-  ) => Effect.Effect<Array<StoredRecord>, PersistenceError>;
+  readonly query: (params: QueryParams) => Effect.Effect<Array<StoredRecord>, PersistenceError>;
 
   /** Update a record's type and data. */
   readonly update: (
@@ -110,17 +102,12 @@ export interface PersistenceShape {
    * Implementations should execute atomically (e.g. in a transaction).
    * Returns total number of rows affected.
    */
-  readonly patch: (
-    params: PatchParams,
-  ) => Effect.Effect<number, PersistenceError>;
+  readonly patch: (params: PatchParams) => Effect.Effect<number, PersistenceError>;
 
   /** Delete a record by ID. */
-  readonly remove: (
-    id: string,
-  ) => Effect.Effect<void, PersistenceError>;
+  readonly remove: (id: string) => Effect.Effect<void, PersistenceError>;
 }
 
-export class Persistence extends ServiceMap.Service<
-  Persistence,
-  PersistenceShape
->()("storic/Persistence") {}
+export class Persistence extends ServiceMap.Service<Persistence, PersistenceShape>()(
+  "storic/Persistence",
+) {}

@@ -31,6 +31,7 @@ Schemas are defined using Effect Schema syntax and are automatically versioned b
 ### Lenses
 
 Lenses define bidirectional transformations between schema versions. They consist of:
+
 - `forward`: Transform from version A to version B
 - `backward`: Transform from version B to version A
 
@@ -50,9 +51,7 @@ import { Store, JsEvaluator } from "@storic/core";
 
 // Setup layers
 const SqlLive = sqliteLayer({ filename: ":memory:" });
-const StoreLive = Store.layer.pipe(
-  Layer.provide(Layer.mergeAll(SqlLive, JsEvaluator.Eval)),
-);
+const StoreLive = Store.layer.pipe(Layer.provide(Layer.mergeAll(SqlLive, JsEvaluator.Eval)));
 
 // Use the store
 const program = Effect.gen(function* () {
@@ -61,7 +60,7 @@ const program = Effect.gen(function* () {
   // Register a schema
   const userV1 = yield* store.registerSchema(
     "User",
-    `S.Struct({ firstName: S.String, lastName: S.String, email: S.String })`
+    `S.Struct({ firstName: S.String, lastName: S.String, email: S.String })`,
   );
 
   // Create an entity

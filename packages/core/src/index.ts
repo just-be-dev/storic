@@ -25,10 +25,7 @@ export { defineLens } from "./lens.ts";
 export { SchemaRegistry, getTag } from "./schema-registry.ts";
 
 // ─── Annotations ────────────────────────────────────────────────────────────
-export {
-  extractFieldMetadata,
-  getIndexedFields,
-} from "./annotations.ts";
+export { extractFieldMetadata, getIndexedFields } from "./annotations.ts";
 export type { FieldMetadata } from "./annotations.ts";
 
 // ─── Errors ─────────────────────────────────────────────────────────────────

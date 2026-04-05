@@ -27,19 +27,12 @@ import { getTag } from "./schema-registry.ts";
  * });
  * ```
  */
-export function defineLens<
-  From extends AnyTaggedStruct,
-  To extends AnyTaggedStruct,
->(
+export function defineLens<From extends AnyTaggedStruct, To extends AnyTaggedStruct>(
   from: From,
   to: To,
   transformation: {
-    readonly decode: (
-      input: Schema.Schema.Type<From>,
-    ) => Omit<Schema.Schema.Type<To>, "_tag">;
-    readonly encode: (
-      input: Schema.Schema.Type<To>,
-    ) => Omit<Schema.Schema.Type<From>, "_tag">;
+    readonly decode: (input: Schema.Schema.Type<From>) => Omit<Schema.Schema.Type<To>, "_tag">;
+    readonly encode: (input: Schema.Schema.Type<To>) => Omit<Schema.Schema.Type<From>, "_tag">;
   },
 ): Lens<From, To> {
   const toTag = getTag(to);

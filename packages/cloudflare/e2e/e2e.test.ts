@@ -63,7 +63,17 @@ async function waitForReady(url: string, timeoutMs = 10_000): Promise<void> {
  */
 async function startWrangler(): Promise<{ proc: Subprocess; url: string }> {
   const child = spawn(
-    ["bunx", "wrangler", "dev", "e2e/worker.ts", "--config", "e2e/wrangler.jsonc", "--local", "--port", "0"],
+    [
+      "bunx",
+      "wrangler",
+      "dev",
+      "e2e/worker.ts",
+      "--config",
+      "e2e/wrangler.jsonc",
+      "--local",
+      "--port",
+      "0",
+    ],
     {
       cwd: import.meta.dir + "/..",
       stdout: "pipe",

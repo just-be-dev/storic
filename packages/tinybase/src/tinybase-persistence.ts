@@ -167,10 +167,7 @@ export const tinybasePersistenceLayer: Layer.Layer<
     // (type, fieldPath) → indexName
     const indexLookup = new Map<string, string>();
     // type → [{ indexName, fieldPath }]
-    const typeIndexes = new Map<
-      string,
-      Array<{ indexName: string; fieldPath: string }>
-    >();
+    const typeIndexes = new Map<string, Array<{ indexName: string; fieldPath: string }>>();
     // In-memory field indexes: indexName → { stringifiedValue → Set<entityId> }
     const fieldIndexes = new Map<string, Map<string, Set<string>>>();
 
@@ -241,10 +238,7 @@ export const tinybasePersistenceLayer: Layer.Layer<
             });
           }
 
-          indexLookup.set(
-            `${idx.typeDiscriminator}::${idx.fieldPath}`,
-            idx.name,
-          );
+          indexLookup.set(`${idx.typeDiscriminator}::${idx.fieldPath}`, idx.name);
           const existing = typeIndexes.get(idx.typeDiscriminator) ?? [];
           existing.push({ indexName: idx.name, fieldPath: idx.fieldPath });
           typeIndexes.set(idx.typeDiscriminator, existing);
@@ -363,9 +357,7 @@ export const tinybasePersistenceLayer: Layer.Layer<
 
             const matchingIds = new Set<string>();
             const valuesToCheck =
-              filter.op === "in"
-                ? (filter.value as unknown[]).map(String)
-                : [String(filter.value)];
+              filter.op === "in" ? (filter.value as unknown[]).map(String) : [String(filter.value)];
 
             for (const type of params.types) {
               const idxName = indexLookup.get(`${type}::${filter.field}`)!;
@@ -607,10 +599,7 @@ export class TinyBasePersistence {
   /** Create a fresh persistence layer with an empty TinyBase Store. */
   static layer(): Layer.Layer<Persistence | TinyBaseStoreService, PersistenceError> {
     const docs = TinyBaseStoreService.fresh();
-    return Layer.mergeAll(
-      tinybasePersistenceLayer.pipe(Layer.provide(docs)),
-      docs,
-    );
+    return Layer.mergeAll(tinybasePersistenceLayer.pipe(Layer.provide(docs)), docs);
   }
 
   /** Create a persistence layer from an existing TinyBase Store. */
@@ -618,9 +607,6 @@ export class TinyBasePersistence {
     tinyStore: TinyBaseStore,
   ): Layer.Layer<Persistence | TinyBaseStoreService, PersistenceError> {
     const docs = TinyBaseStoreService.fromStore(tinyStore);
-    return Layer.mergeAll(
-      tinybasePersistenceLayer.pipe(Layer.provide(docs)),
-      docs,
-    );
+    return Layer.mergeAll(tinybasePersistenceLayer.pipe(Layer.provide(docs)), docs);
   }
 }

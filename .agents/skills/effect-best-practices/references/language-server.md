@@ -62,56 +62,58 @@ Configure in `tsconfig.json` under the plugin entry:
 ```json
 {
   "compilerOptions": {
-    "plugins": [{
-      "name": "@effect/language-service",
-      "refactors": { "allEnabled": true },
-      "diagnostics": { "allEnabled": true },
-      "quickinfo": { "allEnabled": true },
-      "completions": { "allEnabled": true }
-    }]
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "refactors": { "allEnabled": true },
+        "diagnostics": { "allEnabled": true },
+        "quickinfo": { "allEnabled": true },
+        "completions": { "allEnabled": true }
+      }
+    ]
   }
 }
 ```
 
 ### Refactors
 
-| Refactor | Default | Description |
-|----------|---------|-------------|
-| `asyncAwaitToGenTryPromise` | ✓ | Convert async/await to Effect.gen with Effect.tryPromise |
-| `toggleTypeAnnotation` | ✓ | Add/remove return type annotations |
-| `wrapWithEffectGen` | ✓ | Wrap selection in Effect.gen |
-| `addPipeToEffectUse` | ✓ | Add pipe to effectful expression |
-| `arrowToEffectGenFunction` | ✓ | Convert arrow function to Effect.gen |
-| `functionToEffectGenFunction` | ✓ | Convert function to Effect.gen |
-| `removeLayerCompose` | ✓ | Simplify Layer.compose |
+| Refactor                      | Default | Description                                              |
+| ----------------------------- | ------- | -------------------------------------------------------- |
+| `asyncAwaitToGenTryPromise`   | ✓       | Convert async/await to Effect.gen with Effect.tryPromise |
+| `toggleTypeAnnotation`        | ✓       | Add/remove return type annotations                       |
+| `wrapWithEffectGen`           | ✓       | Wrap selection in Effect.gen                             |
+| `addPipeToEffectUse`          | ✓       | Add pipe to effectful expression                         |
+| `arrowToEffectGenFunction`    | ✓       | Convert arrow function to Effect.gen                     |
+| `functionToEffectGenFunction` | ✓       | Convert function to Effect.gen                           |
+| `removeLayerCompose`          | ✓       | Simplify Layer.compose                                   |
 
 ### Diagnostics
 
-| Diagnostic | Default | Description |
-|------------|---------|-------------|
-| `floatingEffect` | ✓ | Detects unhandled Effect values |
-| `missingProvide` | ✓ | Detects missing service requirements |
-| `effectYieldNonEffect` | ✓ | Detects yielding non-Effect in generator |
-| `noExplicitResourceManagement` | ✓ | Detects missing using/await using |
-| `noFloatingPromises` | ✓ | Detects unhandled Promises |
-| `forbiddenTags` | ✓ | Detects using forbidden error tags |
-| `unnecessaryEffectYield` | ✓ | Detects unnecessary Effect.succeed yield |
-| `unnecessaryFlatMap` | ✓ | Detects flatMap that could be map |
-| `unnecessaryMap` | ✓ | Detects map with identity function |
+| Diagnostic                     | Default | Description                              |
+| ------------------------------ | ------- | ---------------------------------------- |
+| `floatingEffect`               | ✓       | Detects unhandled Effect values          |
+| `missingProvide`               | ✓       | Detects missing service requirements     |
+| `effectYieldNonEffect`         | ✓       | Detects yielding non-Effect in generator |
+| `noExplicitResourceManagement` | ✓       | Detects missing using/await using        |
+| `noFloatingPromises`           | ✓       | Detects unhandled Promises               |
+| `forbiddenTags`                | ✓       | Detects using forbidden error tags       |
+| `unnecessaryEffectYield`       | ✓       | Detects unnecessary Effect.succeed yield |
+| `unnecessaryFlatMap`           | ✓       | Detects flatMap that could be map        |
+| `unnecessaryMap`               | ✓       | Detects map with identity function       |
 
 ### Quick Info
 
-| Feature | Default | Description |
-|---------|---------|-------------|
-| `showEffectTypeParamsOnHover` | ✓ | Shows Success/Error/Requirements on hover |
+| Feature                       | Default | Description                               |
+| ----------------------------- | ------- | ----------------------------------------- |
+| `showEffectTypeParamsOnHover` | ✓       | Shows Success/Error/Requirements on hover |
 
 ### Completions
 
-| Completion | Default | Description |
-|------------|---------|-------------|
-| `self` | ✓ | Auto-complete `Self` type parameter |
-| `durationStrings` | ✓ | Auto-complete Duration.decode strings |
-| `brands` | ✓ | Auto-complete Schema brand strings |
+| Completion        | Default | Description                           |
+| ----------------- | ------- | ------------------------------------- |
+| `self`            | ✓       | Auto-complete `Self` type parameter   |
+| `durationStrings` | ✓       | Auto-complete Duration.decode strings |
+| `brands`          | ✓       | Auto-complete Schema brand strings    |
 
 ### Key Patterns
 
@@ -120,14 +122,16 @@ Configure recognized Effect-like patterns:
 ```json
 {
   "compilerOptions": {
-    "plugins": [{
-      "name": "@effect/language-service",
-      "keyPatterns": {
-        "Effect": "Effect\\.Effect",
-        "Layer": "Layer\\.Layer",
-        "Stream": "Stream\\.Stream"
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "keyPatterns": {
+          "Effect": "Effect\\.Effect",
+          "Layer": "Layer\\.Layer",
+          "Stream": "Stream\\.Stream"
+        }
       }
-    }]
+    ]
   }
 }
 ```
@@ -194,6 +198,7 @@ npx effect-language-service overview
 ```
 
 Shows:
+
 - Service definitions
 - Error types
 - Layer composition graph
@@ -214,31 +219,31 @@ npx effect-language-service layerinfo --graph  # Output as graph
 
 ```typescript
 // ERROR: Effect is created but never used
-Effect.succeed(42)
+Effect.succeed(42);
 
 // FIX: Use yield* or pipe to runPromise
-yield* Effect.succeed(42)
+yield * Effect.succeed(42);
 // or
-await Effect.runPromise(Effect.succeed(42))
+await Effect.runPromise(Effect.succeed(42));
 ```
 
 ### Missing Requirements
 
 ```typescript
 // ERROR: UserService is required but not provided
-const program = UserService.findById(id)
+const program = UserService.findById(id);
 // FIX: Add to Layer composition
-const MainLive = Layer.provide(program, UserService.Default)
+const MainLive = Layer.provide(program, UserService.Default);
 ```
 
 ### Yield Non-Effect
 
 ```typescript
 // ERROR: Yielding a non-Effect value
-yield* Promise.resolve(42)
+yield * Promise.resolve(42);
 
 // FIX: Wrap in Effect.promise
-yield* Effect.promise(() => Promise.resolve(42))
+yield * Effect.promise(() => Promise.resolve(42));
 ```
 
 ### Forbidden Tags
@@ -248,10 +253,10 @@ yield* Effect.promise(() => Promise.resolve(42))
 class MyError extends Schema.TaggedError<MyError>()("Error", {}) {}
 
 // FIX: Use descriptive tag
-class UserNotFoundError extends Schema.TaggedError<UserNotFoundError>()(
-  "UserNotFoundError",
-  { userId: UserId, message: Schema.String }
-) {}
+class UserNotFoundError extends Schema.TaggedError<UserNotFoundError>()("UserNotFoundError", {
+  userId: UserId,
+  message: Schema.String,
+}) {}
 ```
 
 ## Troubleshooting
@@ -275,13 +280,15 @@ For large codebases, disable expensive diagnostics:
 ```json
 {
   "compilerOptions": {
-    "plugins": [{
-      "name": "@effect/language-service",
-      "diagnostics": {
-        "allEnabled": true,
-        "missingProvide": false  // Expensive on large projects
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnostics": {
+          "allEnabled": true,
+          "missingProvide": false // Expensive on large projects
+        }
       }
-    }]
+    ]
   }
 }
 ```

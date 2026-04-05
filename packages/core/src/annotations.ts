@@ -1,6 +1,6 @@
 import * as SchemaAST from "effect/SchemaAST";
 import type { AnyTaggedStruct } from "./types.ts";
-import type { Annotations } from "effect/Schema"
+import type { Annotations } from "effect/Schema";
 
 // ─── Module Augmentation ────────────────────────────────────────────────────
 
@@ -23,9 +23,7 @@ export interface FieldMetadata extends Annotations.Augment {
 /**
  * Extract field metadata (including all annotations) from a TaggedStruct schema.
  */
-export function extractFieldMetadata(
-  schema: AnyTaggedStruct,
-): FieldMetadata[] {
+export function extractFieldMetadata(schema: AnyTaggedStruct): FieldMetadata[] {
   const ast = schema.ast;
 
   if (!SchemaAST.isObjects(ast)) {
@@ -44,7 +42,7 @@ export function extractFieldMetadata(
     fields.push({
       name: String(prop.name),
       index: annotations?.index === true,
-      ...annotations
+      ...annotations,
     });
   }
 

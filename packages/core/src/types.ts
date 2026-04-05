@@ -67,5 +67,4 @@ export interface StoreConfig {
 // ─── Utility ────────────────────────────────────────────────────────────────
 
 /** Extract the tag literal from a TaggedStruct schema. */
-export type TagOf<T extends AnyTaggedStruct> =
-  T["fields"]["_tag"]["schema"]["literal"];
+export type TagOf<T extends AnyTaggedStruct> = T["fields"]["_tag"]["schema"]["literal"];

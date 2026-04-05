@@ -89,17 +89,13 @@ export class TestDO extends StoricDO<Env> {
       // GET /load/:id — Load by ID as V2
       if (request.method === "GET" && path.startsWith("/load/")) {
         const id = path.slice("/load/".length);
-        const entity = await this.run(
-          Store.use((store) => store.loadEntity(PersonV2, id)),
-        );
+        const entity = await this.run(Store.use((store) => store.loadEntity(PersonV2, id)));
         return Response.json(entity);
       }
 
       // GET /list — List all as V2
       if (request.method === "GET" && path === "/list") {
-        const entities = await this.run(
-          Store.use((store) => store.loadEntities(PersonV2)),
-        );
+        const entities = await this.run(Store.use((store) => store.loadEntities(PersonV2)));
         return Response.json(entities);
       }
 
@@ -107,9 +103,7 @@ export class TestDO extends StoricDO<Env> {
       if (request.method === "PATCH" && path.startsWith("/update/")) {
         const id = path.slice("/update/".length);
         const body = (await request.json()) as any;
-        const entity = await this.run(
-          Store.use((store) => store.updateEntity(PersonV2, id, body)),
-        );
+        const entity = await this.run(Store.use((store) => store.updateEntity(PersonV2, id, body)));
         return Response.json(entity);
       }
 

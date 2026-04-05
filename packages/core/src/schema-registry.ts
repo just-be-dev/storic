@@ -1,9 +1,5 @@
 import { LensGraph } from "./lens-graph.ts";
-import type {
-  AnyTaggedStruct,
-  LensPath,
-  StoreConfig,
-} from "./types.ts";
+import type { AnyTaggedStruct, LensPath, StoreConfig } from "./types.ts";
 
 // ─── Tag Extraction ─────────────────────────────────────────────────────────
 

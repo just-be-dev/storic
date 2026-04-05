@@ -30,12 +30,12 @@ import { CloudflareJsEvaluator, WorkerLoaderBinding } from "@storic/cloudflare";
 export default {
   async fetch(request: Request, env: Env) {
     const StoreLive = Store.layer.pipe(
-      Layer.provide(Layer.mergeAll(
-        SqlLive,
-        CloudflareJsEvaluator.layer.pipe(
-          Layer.provide(WorkerLoaderBinding.layer(env.EVALUATOR)),
+      Layer.provide(
+        Layer.mergeAll(
+          SqlLive,
+          CloudflareJsEvaluator.layer.pipe(Layer.provide(WorkerLoaderBinding.layer(env.EVALUATOR))),
         ),
-      )),
+      ),
     );
 
     // use StoreLive ...
@@ -61,9 +61,9 @@ let __result;
 let __error;
 
 try {
-  __result = ((a, b) => (a + b))(10, 20);
+  __result = ((a, b) => a + b)(10, 20);
 } catch (e) {
-  __error = (e instanceof Error && e.message) ? e.message : String(e);
+  __error = e instanceof Error && e.message ? e.message : String(e);
 }
 
 export default {
@@ -73,19 +73,13 @@ export default {
     }
     const t = typeof __result;
     if (t === "function" || t === "symbol" || t === "undefined") {
-      return Response.json(
-        { error: "Result is not JSON-serializable: got " + t },
-        { status: 400 },
-      );
+      return Response.json({ error: "Result is not JSON-serializable: got " + t }, { status: 400 });
     }
     try {
       return Response.json({ result: __result });
     } catch (e) {
-      const msg = (e instanceof Error && e.message) ? e.message : String(e);
-      return Response.json(
-        { error: "Result is not JSON-serializable: " + msg },
-        { status: 400 },
-      );
+      const msg = e instanceof Error && e.message ? e.message : String(e);
+      return Response.json({ error: "Result is not JSON-serializable: " + msg }, { status: 400 });
     }
   },
 };

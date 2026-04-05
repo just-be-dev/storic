@@ -1,15 +1,7 @@
 {
   "name": "storic",
   "version": "0.0.0",
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/node": "^22.0.0",
-    "@typescript/native-preview": "latest",
-    "oxfmt": "^0.40.0",
-    "oxlint": "^1.55.0"
-  },
   "private": true,
-  "type": "module",
   "workspaces": {
     "packages": [
       "packages/*"
@@ -18,10 +10,18 @@
       "@typescript/native-preview": "latest"
     }
   },
+  "type": "module",
   "dependencies": {
     "@automerge/automerge": "^3.2.5",
     "@effect/platform-bun": "4.0.0-beta.29",
     "@effect/sql-sqlite-bun": "4.0.0-beta.29",
     "effect": "4.0.0-beta.29"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "@typescript/native-preview": "latest",
+    "oxfmt": "^0.40.0",
+    "oxlint": "^1.55.0"
   }
 }

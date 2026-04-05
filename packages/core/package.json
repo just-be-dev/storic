@@ -1,14 +1,18 @@
 {
   "name": "@storic/core",
   "version": "0.3.1",
-  "main": "./dist/index.js",
-  "devDependencies": {
-    "@effect/sql-sqlite-bun": "4.0.0-beta.29",
-    "@storic/sql": "workspace:*",
-    "@types/bun": "^1.3.10",
-    "@types/node": "^22.0.0",
-    "@typescript/native-preview": "catalog:"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/just-be-dev/storic.git",
+    "directory": "packages/core"
   },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "bun": "./src/index.ts",
@@ -16,26 +20,22 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": [
-    "dist",
-    "src"
-  ],
   "publishConfig": {
     "access": "public"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/just-be-dev/storic.git",
-    "directory": "packages/core"
   },
   "scripts": {
     "build": "tsgo --build",
     "check": "tsgo --noEmit",
     "test": "bun test"
   },
-  "type": "module",
-  "types": "./dist/index.d.ts",
   "dependencies": {
     "effect": "4.0.0-beta.29"
+  },
+  "devDependencies": {
+    "@effect/sql-sqlite-bun": "4.0.0-beta.29",
+    "@storic/sql": "workspace:*",
+    "@types/bun": "^1.3.10",
+    "@types/node": "^22.0.0",
+    "@typescript/native-preview": "catalog:"
   }
 }

@@ -2,10 +2,7 @@ import { test, expect, describe } from "bun:test";
 import { Effect, Layer, Ref, Schema } from "effect";
 import { Store, Persistence, PersistenceError, defineLens } from "@storic/core";
 import type { StoreConfig } from "@storic/core";
-import {
-  TinyBaseStoreService,
-  tinybasePersistenceLayer,
-} from "../src/index.ts";
+import { TinyBaseStoreService, tinybasePersistenceLayer } from "../src/index.ts";
 
 // ─── Test Schemas ────────────────────────────────────────────────────────────
 
@@ -43,9 +40,7 @@ const testConfig: StoreConfig = {
 
 const makeTestLayer = (config: StoreConfig = testConfig) => {
   const StoreServiceLive = TinyBaseStoreService.fresh();
-  const PersistenceLive = tinybasePersistenceLayer.pipe(
-    Layer.provide(StoreServiceLive),
-  );
+  const PersistenceLive = tinybasePersistenceLayer.pipe(Layer.provide(StoreServiceLive));
   const StoreLive = Store.layer(config).pipe(Layer.provide(PersistenceLive));
   return Layer.mergeAll(StoreLive, PersistenceLive, StoreServiceLive);
 };
@@ -53,8 +48,7 @@ const makeTestLayer = (config: StoreConfig = testConfig) => {
 const runStore = <A, E>(
   effect: Effect.Effect<A, E, Store | Persistence | TinyBaseStoreService>,
   config?: StoreConfig,
-): Promise<A> =>
-  Effect.runPromise(Effect.provide(effect, makeTestLayer(config)));
+): Promise<A> => Effect.runPromise(Effect.provide(effect, makeTestLayer(config)));
 
 // ─── Persistence Layer: put & get ────────────────────────────────────────────
 
@@ -172,7 +166,12 @@ describe("query", () => {
           yield* persistence.put({
             id: `p${i}`,
             type: "Person.v1",
-            data: { _tag: "Person.v1", firstName: `Person${i}`, lastName: "X", email: `p${i}@x.com` },
+            data: {
+              _tag: "Person.v1",
+              firstName: `Person${i}`,
+              lastName: "X",
+              email: `p${i}@x.com`,
+            },
           });
         }
 

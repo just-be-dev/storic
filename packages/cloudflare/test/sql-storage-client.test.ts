@@ -40,9 +40,7 @@ function makeMockSqlStorage(): SqlStorage {
           return { done: true as const };
         },
         raw() {
-          return rows.map((row) =>
-            columnNames.map((col) => row[col]),
-          )[Symbol.iterator]();
+          return rows.map((row) => columnNames.map((col) => row[col]))[Symbol.iterator]();
         },
         columnNames,
         get rowsRead() {
@@ -247,9 +245,7 @@ describe("sqlStorageLayer", () => {
 
         return yield* store.loadEntity(PersonV1, saved.id).pipe(
           Effect.map(() => "found" as const),
-          Effect.catchTag("EntityNotFoundError", () =>
-            Effect.succeed("not-found" as const),
-          ),
+          Effect.catchTag("EntityNotFoundError", () => Effect.succeed("not-found" as const)),
         );
       }),
     );

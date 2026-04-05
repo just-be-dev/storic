@@ -46,9 +46,7 @@ const testConfig: StoreConfig = {
 
 const makeTestLayer = (config: StoreConfig = testConfig) => {
   const DocsLive = AutomergeDocs.fresh();
-  const PersistenceLive = automergePersistenceLayer.pipe(
-    Layer.provide(DocsLive),
-  );
+  const PersistenceLive = automergePersistenceLayer.pipe(Layer.provide(DocsLive));
   const StoreLive = Store.layer(config).pipe(Layer.provide(PersistenceLive));
   return Layer.mergeAll(StoreLive, PersistenceLive, DocsLive);
 };
@@ -56,8 +54,7 @@ const makeTestLayer = (config: StoreConfig = testConfig) => {
 const runStore = <A, E>(
   effect: Effect.Effect<A, E, Store | Persistence | AutomergeDocs>,
   config?: StoreConfig,
-): Promise<A> =>
-  Effect.runPromise(Effect.provide(effect, makeTestLayer(config)));
+): Promise<A> => Effect.runPromise(Effect.provide(effect, makeTestLayer(config)));
 
 // ─── Persistence Layer: put & get ───────────���────────────────────────────────
 
@@ -589,9 +586,7 @@ describe("Store integration", () => {
 describe("Automerge CRDT features", () => {
   test("save and load all docs preserves data", async () => {
     const DocsLive = AutomergeDocs.fresh();
-    const PersistenceLive = automergePersistenceLayer.pipe(
-      Layer.provide(DocsLive),
-    );
+    const PersistenceLive = automergePersistenceLayer.pipe(Layer.provide(DocsLive));
     const TestLayer = Layer.mergeAll(PersistenceLive, DocsLive);
 
     // Save state from first session
@@ -612,18 +607,14 @@ describe("Automerge CRDT features", () => {
 
         return {
           catalog: A.save(catalogDoc),
-          entities: Array.from(entityMap.entries()).map(
-            ([id, doc]) => [id, A.save(doc)] as const,
-          ),
+          entities: Array.from(entityMap.entries()).map(([id, doc]) => [id, A.save(doc)] as const),
         };
       }).pipe(Effect.provide(TestLayer)),
     );
 
     // Restore in a new session
     const LoadedLive = AutomergeDocs.fromSaved(saved);
-    const LoadedPersistence = automergePersistenceLayer.pipe(
-      Layer.provide(LoadedLive),
-    );
+    const LoadedPersistence = automergePersistenceLayer.pipe(Layer.provide(LoadedLive));
     const LoadedLayer = Layer.mergeAll(LoadedPersistence, LoadedLive);
 
     const entity = await Effect.runPromise(
@@ -767,9 +758,7 @@ describe("remove cleans up empty byType buckets", () => {
 describe("stale index cleanup", () => {
   test("re-initialize removes stale field indexes from catalog", async () => {
     const DocsLive = AutomergeDocs.fresh();
-    const PersistenceLive = automergePersistenceLayer.pipe(
-      Layer.provide(DocsLive),
-    );
+    const PersistenceLive = automergePersistenceLayer.pipe(Layer.provide(DocsLive));
     const TestLayer = Layer.mergeAll(PersistenceLive, DocsLive);
 
     await Effect.runPromise(
@@ -1026,7 +1015,12 @@ describe("query edge cases", () => {
         yield* persistence.put({
           id: "like-1",
           type: "Person.v1",
-          data: { _tag: "Person.v1", firstName: "Alice", lastName: "Smith", email: "alice@example.com" },
+          data: {
+            _tag: "Person.v1",
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
         });
         yield* persistence.put({
           id: "like-2",
@@ -1036,7 +1030,12 @@ describe("query edge cases", () => {
         yield* persistence.put({
           id: "like-3",
           type: "Person.v1",
-          data: { _tag: "Person.v1", firstName: "Carol", lastName: "White", email: "carol@example.com" },
+          data: {
+            _tag: "Person.v1",
+            firstName: "Carol",
+            lastName: "White",
+            email: "carol@example.com",
+          },
         });
 
         const results = yield* persistence.query({

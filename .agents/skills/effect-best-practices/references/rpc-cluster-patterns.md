@@ -5,50 +5,50 @@
 **Use `RpcGroup.make`** to organize related RPC endpoints:
 
 ```typescript
-import { Rpc, RpcGroup } from "@effect/rpc"
-import { Schema } from "effect"
+import { Rpc, RpcGroup } from "@effect/rpc";
+import { Schema } from "effect";
 
 // Group related operations
 export const UserRpc = RpcGroup.make("User", {
-    // Queries (read operations)
-    findById: Rpc.query({
-        input: UserId,
-        output: User,
-        error: UserNotFoundError,
-    }),
+  // Queries (read operations)
+  findById: Rpc.query({
+    input: UserId,
+    output: User,
+    error: UserNotFoundError,
+  }),
 
-    list: Rpc.query({
-        input: Schema.Struct({
-            organizationId: OrganizationId,
-            limit: Schema.optionalWith(Schema.Number, { default: () => 50 }),
-            offset: Schema.optionalWith(Schema.Number, { default: () => 0 }),
-        }),
-        output: Schema.Array(User),
-        error: Schema.Never,
+  list: Rpc.query({
+    input: Schema.Struct({
+      organizationId: OrganizationId,
+      limit: Schema.optionalWith(Schema.Number, { default: () => 50 }),
+      offset: Schema.optionalWith(Schema.Number, { default: () => 0 }),
     }),
+    output: Schema.Array(User),
+    error: Schema.Never,
+  }),
 
-    // Mutations (write operations)
-    create: Rpc.mutation({
-        input: CreateUserInput,
-        output: User,
-        error: Schema.Union(UserCreateError, ValidationError),
-    }),
+  // Mutations (write operations)
+  create: Rpc.mutation({
+    input: CreateUserInput,
+    output: User,
+    error: Schema.Union(UserCreateError, ValidationError),
+  }),
 
-    update: Rpc.mutation({
-        input: Schema.Struct({
-            id: UserId,
-            data: UpdateUserInput,
-        }),
-        output: User,
-        error: Schema.Union(UserNotFoundError, ValidationError),
+  update: Rpc.mutation({
+    input: Schema.Struct({
+      id: UserId,
+      data: UpdateUserInput,
     }),
+    output: User,
+    error: Schema.Union(UserNotFoundError, ValidationError),
+  }),
 
-    delete: Rpc.mutation({
-        input: UserId,
-        output: Schema.Void,
-        error: UserNotFoundError,
-    }),
-})
+  delete: Rpc.mutation({
+    input: UserId,
+    output: Schema.Void,
+    error: UserNotFoundError,
+  }),
+});
 ```
 
 ### Query vs Mutation
@@ -132,67 +132,64 @@ create: Rpc.mutation({
 Use `ServiceMap.Service` (v4) for the context type provided by middleware:
 
 ```typescript
-import { RpcMiddleware, Rpc } from "@effect/rpc"
-import { Effect, Layer, ServiceMap } from "effect"
+import { RpcMiddleware, Rpc } from "@effect/rpc";
+import { Effect, Layer, ServiceMap } from "effect";
 
 // Context type for authenticated user — use ServiceMap.Service (v4)
 interface CurrentUserShape {
-    readonly id: UserId
-    readonly role: UserRole
-    readonly organizationId: OrganizationId
+  readonly id: UserId;
+  readonly role: UserRole;
+  readonly organizationId: OrganizationId;
 }
 
 export class CurrentUser extends ServiceMap.Service<CurrentUser, CurrentUserShape>()(
-    "auth/CurrentUser"
+  "auth/CurrentUser",
 ) {}
 
 // Unauthorized error — use Schema.TaggedErrorClass (v4)
 export class UnauthorizedError extends Schema.TaggedErrorClass<UnauthorizedError>()(
-    "UnauthorizedError",
-    { message: Schema.String },
+  "UnauthorizedError",
+  { message: Schema.String },
 ) {}
 
 // Auth middleware - extracts and validates auth
-export class AuthMiddleware extends RpcMiddleware.Tag<AuthMiddleware>()(
-    "AuthMiddleware",
-    {
-        provides: CurrentUser,
-        failure: UnauthorizedError,
-    }
-) {}
+export class AuthMiddleware extends RpcMiddleware.Tag<AuthMiddleware>()("AuthMiddleware", {
+  provides: CurrentUser,
+  failure: UnauthorizedError,
+}) {}
 
 // Middleware implementation
 export const AuthMiddlewareLive = Layer.effect(
-    AuthMiddleware,
-    Effect.gen(function* () {
-        const authService = yield* AuthService
+  AuthMiddleware,
+  Effect.gen(function* () {
+    const authService = yield* AuthService;
 
-        return AuthMiddleware.of({
-            execute: (request) =>
-                Effect.gen(function* () {
-                    const token = request.headers.get("authorization")?.replace("Bearer ", "")
+    return AuthMiddleware.of({
+      execute: (request) =>
+        Effect.gen(function* () {
+          const token = request.headers.get("authorization")?.replace("Bearer ", "");
 
-                    if (!token) {
-                        return yield* Effect.fail(new UnauthorizedError({ message: "Missing token" }))
-                    }
+          if (!token) {
+            return yield* Effect.fail(new UnauthorizedError({ message: "Missing token" }));
+          }
 
-                    const user = yield* authService.validateToken(token).pipe(
-                        Effect.catchTag("TokenExpiredError", () =>
-                            Effect.fail(new UnauthorizedError({ message: "Token expired" }))
-                        ),
-                        Effect.catchTag("TokenInvalidError", () =>
-                            Effect.fail(new UnauthorizedError({ message: "Invalid token" }))
-                        ),
-                    )
+          const user = yield* authService.validateToken(token).pipe(
+            Effect.catchTag("TokenExpiredError", () =>
+              Effect.fail(new UnauthorizedError({ message: "Token expired" })),
+            ),
+            Effect.catchTag("TokenInvalidError", () =>
+              Effect.fail(new UnauthorizedError({ message: "Invalid token" })),
+            ),
+          );
 
-                    return user
-                }),
-        })
-    })
-)
+          return user;
+        }),
+    });
+  }),
+);
 
 // Protected RPC using middleware
-export const ProtectedUserRpc = UserRpc.middleware(AuthMiddleware)
+export const ProtectedUserRpc = UserRpc.middleware(AuthMiddleware);
 ```
 
 ## Workflow Definition
@@ -200,97 +197,97 @@ export const ProtectedUserRpc = UserRpc.middleware(AuthMiddleware)
 **Use `Workflow.make`** with explicit idempotency keys:
 
 ```typescript
-import { Workflow } from "@effect/cluster"
-import { Schema } from "effect"
+import { Workflow } from "@effect/cluster";
+import { Schema } from "effect";
 
 export const OrderFulfillmentWorkflow = Workflow.make({
-    name: "OrderFulfillmentWorkflow",
-    payload: {
-        id: OrderId,           // Execution ID
-        orderId: OrderId,
-        userId: UserId,
-        items: Schema.Array(OrderItem),
-        shippingAddress: ShippingAddress,
-    },
-    // Idempotency key prevents duplicate processing
-    idempotencyKey: ({ orderId }) => orderId,
-})
+  name: "OrderFulfillmentWorkflow",
+  payload: {
+    id: OrderId, // Execution ID
+    orderId: OrderId,
+    userId: UserId,
+    items: Schema.Array(OrderItem),
+    shippingAddress: ShippingAddress,
+  },
+  // Idempotency key prevents duplicate processing
+  idempotencyKey: ({ orderId }) => orderId,
+});
 
 export const NotificationWorkflow = Workflow.make({
-    name: "NotificationWorkflow",
-    payload: {
-        id: Schema.String,     // Unique execution ID
-        messageId: MessageId,
-        channelId: ChannelId,
-        authorId: UserId,
-    },
-    idempotencyKey: ({ messageId }) => messageId,
-})
+  name: "NotificationWorkflow",
+  payload: {
+    id: Schema.String, // Unique execution ID
+    messageId: MessageId,
+    channelId: ChannelId,
+    authorId: UserId,
+  },
+  idempotencyKey: ({ messageId }) => messageId,
+});
 ```
 
 ### Workflow Implementation
 
 ```typescript
-import { Activity } from "@effect/workflow"
-import { Effect } from "effect"
+import { Activity } from "@effect/workflow";
+import { Effect } from "effect";
 
 export const OrderFulfillmentWorkflowLayer = OrderFulfillmentWorkflow.toLayer(
-    Effect.fn("OrderFulfillmentWorkflow")(function* (payload) {
-        // Step 1: Reserve inventory
-        const reservation = yield* Activity.make({
-            name: "ReserveInventory",
-            success: InventoryReservation,
-            error: Schema.Union(InsufficientInventoryError, DatabaseError),
-            execute: Effect.gen(function* () {
-                const inventory = yield* InventoryService
-                return yield* inventory.reserve(payload.items)
-            }),
-        })
+  Effect.fn("OrderFulfillmentWorkflow")(function* (payload) {
+    // Step 1: Reserve inventory
+    const reservation = yield* Activity.make({
+      name: "ReserveInventory",
+      success: InventoryReservation,
+      error: Schema.Union(InsufficientInventoryError, DatabaseError),
+      execute: Effect.gen(function* () {
+        const inventory = yield* InventoryService;
+        return yield* inventory.reserve(payload.items);
+      }),
+    });
 
-        // Step 2: Process payment
-        const payment = yield* Activity.make({
-            name: "ProcessPayment",
-            success: PaymentResult,
-            error: Schema.Union(PaymentFailedError, PaymentTimeoutError),
-            execute: Effect.gen(function* () {
-                const payments = yield* PaymentService
-                return yield* payments.charge(payload.userId, payload.items)
-            }),
-        })
+    // Step 2: Process payment
+    const payment = yield* Activity.make({
+      name: "ProcessPayment",
+      success: PaymentResult,
+      error: Schema.Union(PaymentFailedError, PaymentTimeoutError),
+      execute: Effect.gen(function* () {
+        const payments = yield* PaymentService;
+        return yield* payments.charge(payload.userId, payload.items);
+      }),
+    });
 
-        // Step 3: Create shipment
-        const shipment = yield* Activity.make({
-            name: "CreateShipment",
-            success: Shipment,
-            error: Schema.Union(ShippingError, AddressInvalidError),
-            execute: Effect.gen(function* () {
-                const shipping = yield* ShippingService
-                return yield* shipping.createShipment({
-                    items: payload.items,
-                    address: payload.shippingAddress,
-                    reservationId: reservation.id,
-                })
-            }),
-        })
+    // Step 3: Create shipment
+    const shipment = yield* Activity.make({
+      name: "CreateShipment",
+      success: Shipment,
+      error: Schema.Union(ShippingError, AddressInvalidError),
+      execute: Effect.gen(function* () {
+        const shipping = yield* ShippingService;
+        return yield* shipping.createShipment({
+          items: payload.items,
+          address: payload.shippingAddress,
+          reservationId: reservation.id,
+        });
+      }),
+    });
 
-        // Step 4: Send confirmation
-        yield* Activity.make({
-            name: "SendConfirmation",
-            success: Schema.Void,
-            error: NotificationError,
-            execute: Effect.gen(function* () {
-                const notifications = yield* NotificationService
-                yield* notifications.sendOrderConfirmation({
-                    userId: payload.userId,
-                    orderId: payload.orderId,
-                    trackingNumber: shipment.trackingNumber,
-                })
-            }),
-        })
+    // Step 4: Send confirmation
+    yield* Activity.make({
+      name: "SendConfirmation",
+      success: Schema.Void,
+      error: NotificationError,
+      execute: Effect.gen(function* () {
+        const notifications = yield* NotificationService;
+        yield* notifications.sendOrderConfirmation({
+          userId: payload.userId,
+          orderId: payload.orderId,
+          trackingNumber: shipment.trackingNumber,
+        });
+      }),
+    });
 
-        return { shipment, payment }
-    })
-)
+    return { shipment, payment };
+  }),
+);
 ```
 
 ## Activity Patterns
@@ -299,23 +296,25 @@ export const OrderFulfillmentWorkflowLayer = OrderFulfillmentWorkflow.toLayer(
 
 ```typescript
 // CORRECT - schemas specified
-yield* Activity.make({
+yield *
+  Activity.make({
     name: "SendEmail",
     success: EmailSentResult,
     error: Schema.Union(EmailDeliveryError, EmailTemplateError),
     execute: Effect.gen(function* () {
-        // Implementation
-        return { messageId: "msg-123", sentAt: new Date() }
+      // Implementation
+      return { messageId: "msg-123", sentAt: new Date() };
     }),
-})
+  });
 
 // WRONG - missing schemas
-yield* Activity.make({
+yield *
+  Activity.make({
     name: "SendEmail",
     execute: Effect.gen(function* () {
-        // This will not serialize properly across workflow restarts
+      // This will not serialize properly across workflow restarts
     }),
-})
+  });
 ```
 
 ### Activity Error Handling with Retryable
@@ -324,58 +323,59 @@ Define activity errors with `Schema.TaggedErrorClass` (v4) and include a `retrya
 
 ```typescript
 export class ExternalApiError extends Schema.TaggedErrorClass<ExternalApiError>()(
-    "ExternalApiError",
-    {
-        message: Schema.String,
-        statusCode: Schema.Number,
-        retryable: Schema.Boolean,
-    },
+  "ExternalApiError",
+  {
+    message: Schema.String,
+    statusCode: Schema.Number,
+    retryable: Schema.Boolean,
+  },
 ) {
-    static fromResponse(response: Response): ExternalApiError {
-        return new ExternalApiError({
-            message: `API error: ${response.statusText}`,
-            statusCode: response.status,
-            retryable: response.status >= 500, // 5xx errors are retryable
-        })
-    }
+  static fromResponse(response: Response): ExternalApiError {
+    return new ExternalApiError({
+      message: `API error: ${response.statusText}`,
+      statusCode: response.status,
+      retryable: response.status >= 500, // 5xx errors are retryable
+    });
+  }
 }
 
-yield* Activity.make({
+yield *
+  Activity.make({
     name: "CallExternalApi",
     success: ApiResponse,
     error: ExternalApiError,
     execute: Effect.gen(function* () {
-        const response = yield* fetch(url)
-        if (!response.ok) {
-            return yield* Effect.fail(ExternalApiError.fromResponse(response))
-        }
-        return yield* response.json()
+      const response = yield* fetch(url);
+      if (!response.ok) {
+        return yield* Effect.fail(ExternalApiError.fromResponse(response));
+      }
+      return yield* response.json();
     }),
-})
+  });
 ```
 
 ## ClusterCron for Scheduled Jobs
 
 ```typescript
-import { ClusterCron } from "@effect/cluster"
+import { ClusterCron } from "@effect/cluster";
 
 export const DailyReportCron = ClusterCron.make({
-    name: "DailyReportCron",
-    // Cron expression: every day at 6 AM UTC
-    schedule: "0 6 * * *",
-})
+  name: "DailyReportCron",
+  // Cron expression: every day at 6 AM UTC
+  schedule: "0 6 * * *",
+});
 
 // Implementation
 export const DailyReportCronLayer = DailyReportCron.toLayer(
-    Effect.fn("DailyReportCron")(function* () {
-        yield* Effect.log("Starting daily report generation")
+  Effect.fn("DailyReportCron")(function* () {
+    yield* Effect.log("Starting daily report generation");
 
-        const reports = yield* ReportService
-        yield* reports.generateDailyReport()
+    const reports = yield* ReportService;
+    yield* reports.generateDailyReport();
 
-        yield* Effect.log("Daily report generation complete")
-    })
-)
+    yield* Effect.log("Daily report generation complete");
+  }),
+);
 ```
 
 ## Triggering Workflows
@@ -383,33 +383,33 @@ export const DailyReportCronLayer = DailyReportCron.toLayer(
 ### From HTTP Handler
 
 ```typescript
-import { HttpApi, HttpApiEndpoint } from "@effect/platform"
+import { HttpApi, HttpApiEndpoint } from "@effect/platform";
 
 const createOrder = HttpApiEndpoint.post("createOrder", "/orders")
-    .setPayload(CreateOrderInput)
-    .addSuccess(Order)
-    .addError(ValidationError)
+  .setPayload(CreateOrderInput)
+  .addSuccess(Order)
+  .addError(ValidationError);
 
 // Handler triggers workflow — yield services first (v4: no accessors)
 const createOrderHandler = Effect.gen(function* () {
-    const input = yield* HttpApi.payload
-    const workflowClient = yield* WorkflowClient
-    const orderService = yield* OrderService
+  const input = yield* HttpApi.payload;
+  const workflowClient = yield* WorkflowClient;
+  const orderService = yield* OrderService;
 
-    // Create order in database
-    const order = yield* orderService.create(input)
+  // Create order in database
+  const order = yield* orderService.create(input);
 
-    // Trigger async fulfillment workflow
-    yield* workflowClient.workflows.OrderFulfillmentWorkflow.execute({
-        id: order.id,
-        orderId: order.id,
-        userId: input.userId,
-        items: input.items,
-        shippingAddress: input.shippingAddress,
-    })
+  // Trigger async fulfillment workflow
+  yield* workflowClient.workflows.OrderFulfillmentWorkflow.execute({
+    id: order.id,
+    orderId: order.id,
+    userId: input.userId,
+    items: input.items,
+    shippingAddress: input.shippingAddress,
+  });
 
-    return order
-})
+  return order;
+});
 ```
 
 ### From Backend Service
@@ -419,45 +419,43 @@ Use `ServiceMap.Service` (v4) for the service definition. Yield dependencies ins
 ```typescript
 // 1. Define the service shape
 interface MessageServiceShape {
-    readonly create: (input: CreateMessageInput) => Effect.Effect<Message, MessageCreateError>
+  readonly create: (input: CreateMessageInput) => Effect.Effect<Message, MessageCreateError>;
 }
 
 // 2. Define the service with ServiceMap.Service (v4)
 export class MessageService extends ServiceMap.Service<MessageService, MessageServiceShape>()(
-    "app/MessageService"
+  "app/MessageService",
 ) {
-    // 3. Static layer — yield deps, wire with Layer.provide
-    static readonly layer: Layer.Layer<MessageService, never, MessageRepo | WorkflowClient> =
-        Layer.effect(
-            MessageService,
-            Effect.gen(function* () {
-                const repo = yield* MessageRepo
-                const workflows = yield* WorkflowClient
+  // 3. Static layer — yield deps, wire with Layer.provide
+  static readonly layer: Layer.Layer<MessageService, never, MessageRepo | WorkflowClient> =
+    Layer.effect(
+      MessageService,
+      Effect.gen(function* () {
+        const repo = yield* MessageRepo;
+        const workflows = yield* WorkflowClient;
 
-                const create = Effect.fn("MessageService.create")(
-                    function* (input: CreateMessageInput) {
-                        const message = yield* repo.create(input)
+        const create = Effect.fn("MessageService.create")(function* (input: CreateMessageInput) {
+          const message = yield* repo.create(input);
 
-                        // Trigger notification workflow
-                        yield* workflows.workflows.NotificationWorkflow.execute({
-                            id: message.id,
-                            messageId: message.id,
-                            channelId: message.channelId,
-                            authorId: message.authorId,
-                        })
+          // Trigger notification workflow
+          yield* workflows.workflows.NotificationWorkflow.execute({
+            id: message.id,
+            messageId: message.id,
+            channelId: message.channelId,
+            authorId: message.authorId,
+          });
 
-                        return message
-                    }
-                )
+          return message;
+        });
 
-                return MessageService.of({ create })
-            })
-        )
+        return MessageService.of({ create });
+      }),
+    );
 }
 
 // 4. Wire layer dependencies
 const MessageServiceLive = MessageService.layer.pipe(
-    Layer.provide(MessageRepo.layer),
-    Layer.provide(WorkflowClient.layer),
-)
+  Layer.provide(MessageRepo.layer),
+  Layer.provide(WorkflowClient.layer),
+);
 ```

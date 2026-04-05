@@ -25,10 +25,7 @@ const likeRegexCache = new Map<string, RegExp>();
 function getLikeRegex(pattern: string): RegExp {
   let re = likeRegexCache.get(pattern);
   if (!re) {
-    const rePattern =
-      "^" +
-      pattern.replace(/%/g, ".*").replace(/_/g, ".") +
-      "$";
+    const rePattern = "^" + pattern.replace(/%/g, ".*").replace(/_/g, ".") + "$";
     re = new RegExp(rePattern);
     likeRegexCache.set(pattern, re);
   }

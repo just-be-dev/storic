@@ -7,10 +7,9 @@ export class EntityNotFoundError extends Schema.TaggedErrorClass<EntityNotFoundE
 ) {}
 
 /** Schema validation failed. */
-export class ValidationError extends Schema.TaggedErrorClass<ValidationError>()(
-  "ValidationError",
-  { message: Schema.String },
-) {}
+export class ValidationError extends Schema.TaggedErrorClass<ValidationError>()("ValidationError", {
+  message: Schema.String,
+}) {}
 
 /** No lens path exists between two schema versions. */
 export class LensPathNotFoundError extends Schema.TaggedErrorClass<LensPathNotFoundError>()(
@@ -23,10 +22,9 @@ export class LensPathNotFoundError extends Schema.TaggedErrorClass<LensPathNotFo
 ) {}
 
 /** Applying a lens transformation failed. */
-export class TransformError extends Schema.TaggedErrorClass<TransformError>()(
-  "TransformError",
-  { reason: Schema.String },
-) {}
+export class TransformError extends Schema.TaggedErrorClass<TransformError>()("TransformError", {
+  reason: Schema.String,
+}) {}
 
 /** Persistence backend error. */
 export class PersistenceError extends Schema.TaggedErrorClass<PersistenceError>()(

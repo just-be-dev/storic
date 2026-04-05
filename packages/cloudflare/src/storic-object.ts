@@ -35,10 +35,7 @@ import { doStoragePersistence } from "./persistence.ts";
  * }
  * ```
  */
-export abstract class StoricDO<
-  Env = unknown,
-  Props = {},
-> extends DurableObject<Env, Props> {
+export abstract class StoricDO<Env = unknown, Props = {}> extends DurableObject<Env, Props> {
   /**
    * Override this getter to provide the Storic configuration.
    * Schemas and lenses are defined here, outside the DO's storage concerns.

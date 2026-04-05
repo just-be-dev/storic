@@ -7,8 +7,5 @@
     "types": ["@cloudflare/workers-types", "bun"]
   },
   "include": ["src"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../sql" }
-  ]
+  "references": [{ "path": "../core" }, { "path": "../sql" }]
 }
