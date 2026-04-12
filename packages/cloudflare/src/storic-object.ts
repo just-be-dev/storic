@@ -2,73 +2,88 @@ import { DurableObject } from "cloudflare:workers";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
-import { Store } from "@storic/core";
-import type { StoreConfig } from "@storic/core";
+import { Persistence } from "@storic/core";
+import type {
+  InitSpec,
+  PersistenceRecord,
+  StoredRecord,
+  QueryParams,
+  PatchParams,
+} from "@storic/core";
 import { doStoragePersistence } from "./persistence.ts";
 
 /**
- * Generic Durable Object that provides a Persistence layer.
+ * Generic Durable Object that exposes the Persistence interface as RPC methods.
  *
- * This is the "dumb store" — it knows nothing about schemas or lenses.
- * All schema validation and lens transforms happen caller-side in the
- * Store layer, which is composed on top of the Persistence this DO provides.
+ * This is a "dumb store" — it knows nothing about schemas or lenses.
+ * All schema validation and lens transforms live caller-side in the
+ * Store layer, which talks to this DO via `doStubPersistence(stub)`.
+ *
+ * Deploy once. Never redeploy for schema changes.
  *
  * @example
  * ```ts
- * import { DurableObject } from "cloudflare:workers";
- * import { StoricDO, Store } from "@storic/cloudflare";
- * import type { StoreConfig } from "@storic/cloudflare";
+ * // wrangler.jsonc
+ * // { "durable_objects": { "bindings": [{ "name": "STORE", "class_name": "StoricDO" }] } }
  *
- * const config: StoreConfig = { schemas: [PersonV1, PersonV2], lenses: [PersonV1toV2] };
+ * // worker.ts
+ * import { StoricDO, createStore } from "@storic/cloudflare";
+ * export { StoricDO };
  *
- * export class MyDO extends StoricDO<Env> {
- *   get config(): StoreConfig {
- *     return config;
- *   }
- *
- *   async fetch(request: Request) {
- *     const entities = await this.run(
- *       Store.use((store) => store.loadEntities(PersonV2))
- *     );
- *     return Response.json(entities);
- *   }
- * }
+ * export default {
+ *   async fetch(request: Request, env: Env) {
+ *     const store = createStore(env.STORE, "my-store", config);
+ *     const entity = await store.loadEntity(PersonV2, id);
+ *     return Response.json(entity);
+ *   },
+ * };
  * ```
  */
-export abstract class StoricDO<Env = unknown, Props = {}> extends DurableObject<Env, Props> {
-  /**
-   * Override this getter to provide the Storic configuration.
-   * Schemas and lenses are defined here, outside the DO's storage concerns.
-   */
-  abstract get config(): StoreConfig;
-
-  private _runtime!: ManagedRuntime.ManagedRuntime<Store, never>;
+export class StoricDO<Env = unknown> extends DurableObject<Env> {
+  private _runtime!: ManagedRuntime.ManagedRuntime<Persistence, never>;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
 
     this.ctx.blockConcurrencyWhile(async () => {
-      const persistenceLayer = doStoragePersistence(this.ctx.storage.sql);
-
-      // Store.layer handles schema registry, index computation, and
-      // delegates storage to the Persistence backend.
-      const storeLayer = Store.layer(this.config).pipe(
-        Layer.provide(persistenceLayer),
-        Layer.orDie,
-      );
-
-      this._runtime = ManagedRuntime.make(storeLayer);
-
+      const layer = doStoragePersistence(this.ctx.storage.sql).pipe(Layer.orDie);
+      this._runtime = ManagedRuntime.make(layer);
       // Force initialization inside blockConcurrencyWhile
       await this._runtime.runPromise(Effect.void);
     });
   }
 
-  /**
-   * Run an Effect program with `Store` available in the context.
-   */
-  protected run<A, E>(effect: Effect.Effect<A, E, Store>): Promise<A> {
-    return this._runtime.runPromise(effect);
+  // ── Persistence RPC methods ──────────────────────────────────────────────
+
+  async initialize(spec: InitSpec): Promise<void> {
+    return this._runtime.runPromise(Persistence.use((p) => p.initialize(spec)));
+  }
+
+  async put(record: PersistenceRecord): Promise<StoredRecord> {
+    return this._runtime.runPromise(Persistence.use((p) => p.put(record)));
+  }
+
+  async get(id: string): Promise<StoredRecord | null> {
+    return this._runtime.runPromise(Persistence.use((p) => p.get(id)));
+  }
+
+  async query(params: QueryParams): Promise<Array<StoredRecord>> {
+    return this._runtime.runPromise(Persistence.use((p) => p.query(params)));
+  }
+
+  async update(
+    id: string,
+    record: { readonly type: string; readonly data: Record<string, unknown> },
+  ): Promise<StoredRecord> {
+    return this._runtime.runPromise(Persistence.use((p) => p.update(id, record)));
+  }
+
+  async patch(params: PatchParams): Promise<number> {
+    return this._runtime.runPromise(Persistence.use((p) => p.patch(params)));
+  }
+
+  async remove(id: string): Promise<void> {
+    return this._runtime.runPromise(Persistence.use((p) => p.remove(id)));
   }
 }
 
