@@ -4,14 +4,17 @@
  * Helper utilities for using Storic with Cloudflare Durable Objects.
  *
  * Provides:
- * - `doStoragePersistence` — Persistence implementation backed by DO's SqlStorage
- * - `StoricDO` — Base class for DOs with automatic Store setup
+ * - `StoricDO` — Generic DO that exposes Persistence as RPC methods
+ * - `doStubPersistence` — Persistence layer backed by RPC to a StoricDO stub
+ * - `doStoragePersistence` — Persistence layer backed by DO's SqlStorage (direct)
  * - `sqlStorageLayer` — Low-level SqlClient adapter (for advanced use)
  */
 
 // ─── Cloudflare-specific ────────────────────────────────────────────────────
-export { doStoragePersistence } from "./persistence.ts";
 export { StoricDO, StoricObject } from "./storic-object.ts";
+export { doStubPersistence } from "./stub-persistence.ts";
+export { makeStoreLayer, createStore } from "./helpers.ts";
+export { doStoragePersistence } from "./persistence.ts";
 export { sqlStorageLayer } from "./sql-storage-client.ts";
 
 // ─── Re-export core for convenience ─────────────────────────────────────────
