@@ -1,12 +1,17 @@
 /**
- * E2E test worker — a Durable Object using StoricObject with a simple
- * HTTP interface that exercises all store operations.
+ * E2E test worker — uses StoricDO as a generic datastore via RPC.
+ *
+ * Schemas and lenses live entirely in this worker entrypoint.
+ * The DO is deployed as-is, with no schema knowledge.
  */
 import { Schema } from "effect";
-import { StoricDO, Store, defineLens } from "../src/index.ts";
+import { StoricDO, defineLens, createStore } from "../src/index.ts";
 import type { StoreConfig } from "../src/index.ts";
 
-// ─── Schemas ────────────────────────────────────────────────────────────────
+// Re-export StoricDO so wrangler can bind it
+export { StoricDO };
+
+// ─── Schemas (caller-side only) ────────────────────────────────────────────
 
 const PersonV1 = Schema.TaggedStruct("Person.v1", {
   firstName: Schema.String,
@@ -38,79 +43,68 @@ const storeConfig: StoreConfig = {
   lenses: [PersonV1toV2],
 };
 
-// ─── Env type ───────────────────────────────────────────────────────────────
+// ─── Env type ──────────────────────────────────────────────────────────────
 
 interface Env {
-  TEST_DO: DurableObjectNamespace<TestDO>;
+  TEST_DO: DurableObjectNamespace<StoricDO>;
 }
 
-// ─── Durable Object ─────────────────────────────────────────────────────────
+// ─── Worker entrypoint ─────────────────────────────────────────────────────
 
-export class TestDO extends StoricDO<Env> {
-  get config(): StoreConfig {
-    return storeConfig;
-  }
-
-  async fetch(request: Request): Promise<Response> {
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const store = createStore(env.TEST_DO, "test", storeConfig);
     const url = new URL(request.url);
     const path = url.pathname;
 
     try {
-      // POST /save-v1 — Save a PersonV1
+      // POST /save-v1
       if (request.method === "POST" && path === "/save-v1") {
         const body = (await request.json()) as any;
-        const entity = await this.run(
-          Store.use((store) =>
-            store.saveEntity(PersonV1, {
-              firstName: body.firstName,
-              lastName: body.lastName,
-              email: body.email,
-            }),
-          ),
-        );
+        const entity = await store.saveEntity(PersonV1, {
+          firstName: body.firstName,
+          lastName: body.lastName,
+          email: body.email,
+        });
         return Response.json(entity);
       }
 
-      // POST /save-v2 — Save a PersonV2
+      // POST /save-v2
       if (request.method === "POST" && path === "/save-v2") {
         const body = (await request.json()) as any;
-        const entity = await this.run(
-          Store.use((store) =>
-            store.saveEntity(PersonV2, {
-              fullName: body.fullName,
-              email: body.email,
-              age: body.age,
-            }),
-          ),
-        );
+        const entity = await store.saveEntity(PersonV2, {
+          fullName: body.fullName,
+          email: body.email,
+          age: body.age,
+        });
         return Response.json(entity);
       }
 
-      // GET /load/:id — Load by ID as V2
+      // GET /load/:id
       if (request.method === "GET" && path.startsWith("/load/")) {
         const id = path.slice("/load/".length);
-        const entity = await this.run(Store.use((store) => store.loadEntity(PersonV2, id)));
+        const entity = await store.loadEntity(PersonV2, id);
         return Response.json(entity);
       }
 
-      // GET /list — List all as V2
+      // GET /list
       if (request.method === "GET" && path === "/list") {
-        const entities = await this.run(Store.use((store) => store.loadEntities(PersonV2)));
+        const entities = await store.loadEntities(PersonV2);
         return Response.json(entities);
       }
 
-      // PATCH /update/:id — Update entity (merge mode)
+      // PATCH /update/:id
       if (request.method === "PATCH" && path.startsWith("/update/")) {
         const id = path.slice("/update/".length);
         const body = (await request.json()) as any;
-        const entity = await this.run(Store.use((store) => store.updateEntity(PersonV2, id, body)));
+        const entity = await store.updateEntity(PersonV2, id, body);
         return Response.json(entity);
       }
 
-      // DELETE /delete/:id — Delete entity
+      // DELETE /delete/:id
       if (request.method === "DELETE" && path.startsWith("/delete/")) {
         const id = path.slice("/delete/".length);
-        await this.run(Store.use((store) => store.deleteEntity(id)));
+        await store.deleteEntity(id);
         return Response.json({ deleted: true });
       }
 
@@ -118,16 +112,5 @@ export class TestDO extends StoricDO<Env> {
     } catch (error) {
       return Response.json({ error: String(error) }, { status: 500 });
     }
-  }
-}
-
-// ─── Worker entrypoint ──────────────────────────────────────────────────────
-
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    // Route all requests to a single DO instance named "test"
-    const id = env.TEST_DO.idFromName("test");
-    const stub = env.TEST_DO.get(id);
-    return stub.fetch(request);
   },
 };
