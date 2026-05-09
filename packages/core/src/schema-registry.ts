@@ -1,5 +1,5 @@
 import { LensGraph } from "./lens-graph.ts";
-import type { AnyTaggedStruct, LensPath, StoreConfig } from "./types.ts";
+import type { AnyTaggedStruct, Lens, LensPath } from "./types.ts";
 
 // ─── Tag Extraction ─────────────────────────────────────────────────────────
 
@@ -15,19 +15,25 @@ export function getTag(schema: AnyTaggedStruct): string {
 /**
  * An in-memory registry of all schemas and their lens relationships.
  *
- * Created from a `StoreConfig` and used by the Store to:
+ * Used by the Store to:
  * - Look up schemas by tag
  * - Find all connected tags for multi-version queries
  * - Find transformation paths between schema versions
+ *
+ * Built from a flat list of schemas + lenses (the Store's `layer()` flattens
+ * entities into this shape internally).
  */
 export class SchemaRegistry {
   private readonly schemas: ReadonlyMap<string, AnyTaggedStruct>;
   private readonly lensGraph: LensGraph;
 
-  constructor(config: StoreConfig) {
+  constructor(input: {
+    readonly schemas: ReadonlyArray<AnyTaggedStruct>;
+    readonly lenses?: ReadonlyArray<Lens>;
+  }) {
     // Index schemas by tag
     const schemaMap = new Map<string, AnyTaggedStruct>();
-    for (const schema of config.schemas) {
+    for (const schema of input.schemas) {
       const tag = getTag(schema);
       schemaMap.set(tag, schema);
     }
@@ -35,7 +41,7 @@ export class SchemaRegistry {
 
     // Build lens graph, auto-registering any schemas referenced by lenses
     this.lensGraph = new LensGraph();
-    for (const lens of config.lenses ?? []) {
+    for (const lens of input.lenses ?? []) {
       const fromType = getTag(lens.from);
       const toType = getTag(lens.to);
 
