@@ -1,6 +1,6 @@
 {
   "name": "@storic/tinybase",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/just-be-dev/storic.git",
@@ -30,7 +30,7 @@
   },
   "dependencies": {
     "@storic/core": "workspace:*",
-    "effect": "4.0.0-beta.43"
+    "effect": "4.0.0-beta.64"
   },
   "peerDependencies": {
     "tinybase": "^8.3.0"

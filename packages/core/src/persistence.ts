@@ -1,4 +1,4 @@
-import { Effect, ServiceMap } from "effect";
+import { Effect, Context } from "effect";
 import type { PersistenceError } from "./errors.ts";
 
 // ─── Persistence Record Types ──────────────────────────────────────────────
@@ -108,6 +108,6 @@ export interface PersistenceShape {
   readonly remove: (id: string) => Effect.Effect<void, PersistenceError>;
 }
 
-export class Persistence extends ServiceMap.Service<Persistence, PersistenceShape>()(
+export class Persistence extends Context.Service<Persistence, PersistenceShape>()(
   "storic/Persistence",
 ) {}

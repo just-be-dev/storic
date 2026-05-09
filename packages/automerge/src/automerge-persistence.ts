@@ -1,5 +1,5 @@
 import * as A from "@automerge/automerge";
-import { Effect, Layer, Ref, ServiceMap } from "effect";
+import { Effect, Layer, Ref, Context } from "effect";
 import { Persistence, PersistenceError } from "@storic/core";
 import type {
   IndexSpec,
@@ -79,7 +79,7 @@ export interface AutomergeDocsShape {
  * }
  * ```
  */
-export class AutomergeDocs extends ServiceMap.Service<AutomergeDocs, AutomergeDocsShape>()(
+export class AutomergeDocs extends Context.Service<AutomergeDocs, AutomergeDocsShape>()(
   "storic/AutomergeDocs",
 ) {
   /** Create a layer with fresh empty documents. */

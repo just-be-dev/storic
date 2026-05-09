@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema, ServiceMap } from "effect";
+import { Effect, Layer, Schema, Context } from "effect";
 import {
   EntityNotFoundError,
   LensPathNotFoundError,
@@ -261,7 +261,7 @@ export interface StoreShape {
 
 // ─── Store Service ──────────────────────────────────────────────────────────
 
-export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/Store") {
+export class Store extends Context.Service<Store, StoreShape>()("datastore/Store") {
   /**
    * Create a Store layer from a StoreConfig and a Persistence backend.
    *

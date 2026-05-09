@@ -9,7 +9,7 @@ import { identity } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import * as ServiceMap from "effect/ServiceMap";
+import * as Context from "effect/Context";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import * as Reactivity from "effect/unstable/reactivity/Reactivity";
@@ -109,14 +109,14 @@ export const sqlStorageLayer = (sql: SqlStorage): Layer.Layer<Client.SqlClient> 
   const connection = makeSqlStorageConnection(sql);
   const compiler = Statement.makeCompilerSqlite();
 
-  return Layer.effectServices(
+  return Layer.effectContext(
     Effect.gen(function* () {
       const semaphore = yield* Semaphore.make(1);
 
       const acquirer = semaphore.withPermits(1)(Effect.succeed(connection));
       const transactionAcquirer = Effect.uninterruptibleMask((restore) => {
         const fiber = Fiber.getCurrent()!;
-        const scope = ServiceMap.getUnsafe(fiber.services, Scope.Scope);
+        const scope = Context.getUnsafe(fiber.context, Scope.Scope);
         return Effect.as(
           Effect.tap(restore(semaphore.take(1)), () =>
             Scope.addFinalizer(scope, semaphore.release(1)),
@@ -132,7 +132,7 @@ export const sqlStorageLayer = (sql: SqlStorage): Layer.Layer<Client.SqlClient> 
         spanAttributes: [[ATTR_DB_SYSTEM_NAME, "sqlite"]],
       });
 
-      return ServiceMap.make(Client.SqlClient, client);
+      return Context.make(Client.SqlClient, client);
     }),
   ).pipe(Layer.provide(Reactivity.layer));
 };

@@ -1,5 +1,5 @@
 import { createStore, type Store as TinyBaseStore } from "tinybase";
-import { Effect, Layer, Ref, ServiceMap } from "effect";
+import { Effect, Layer, Ref, Context } from "effect";
 import { Persistence, PersistenceError } from "@storic/core";
 import type {
   IndexSpec,
@@ -37,7 +37,7 @@ export interface TinyBaseStoreShape {
  * const synchronizer = createWsSynchronizer(tinyStore, ws);
  * ```
  */
-export class TinyBaseStoreService extends ServiceMap.Service<
+export class TinyBaseStoreService extends Context.Service<
   TinyBaseStoreService,
   TinyBaseStoreShape
 >()("storic/TinyBaseStore") {

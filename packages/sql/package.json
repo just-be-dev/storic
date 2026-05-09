@@ -1,6 +1,6 @@
 {
   "name": "@storic/sql",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/just-be-dev/storic.git",
@@ -29,9 +29,9 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@effect/sql-sqlite-bun": "4.0.0-beta.43",
+    "@effect/sql-sqlite-bun": "4.0.0-beta.64",
     "@storic/core": "workspace:*",
-    "effect": "4.0.0-beta.43"
+    "effect": "4.0.0-beta.64"
   },
   "devDependencies": {
     "@types/bun": "^1.3.10",
