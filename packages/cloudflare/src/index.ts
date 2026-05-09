@@ -18,9 +18,18 @@ export { doStoragePersistence } from "./persistence.ts";
 export { sqlStorageLayer } from "./sql-storage-client.ts";
 
 // ─── Re-export core for convenience ─────────────────────────────────────────
-export { Store, Persistence, defineLens, SchemaRegistry, getTag } from "@storic/core";
+export {
+  Store,
+  Persistence,
+  defineLens,
+  defineEntity,
+  entitySchemas,
+  SchemaRegistry,
+  getTag,
+} from "@storic/core";
 export type {
   AnyTaggedStruct,
+  Entity,
   EntityRecord,
   Lens,
   StoreConfig,

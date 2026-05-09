@@ -5,7 +5,7 @@
  * The DO is deployed as-is, with no schema knowledge.
  */
 import { Schema } from "effect";
-import { StoricDO, defineLens, createStore } from "../src/index.ts";
+import { StoricDO, defineEntity, defineLens, createStore } from "../src/index.ts";
 import type { StoreConfig } from "../src/index.ts";
 
 // Re-export StoricDO so wrangler can bind it
@@ -38,9 +38,13 @@ const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
   }),
 });
 
-const storeConfig: StoreConfig = {
-  schemas: [PersonV1, PersonV2],
+const Person = defineEntity({
+  schema: PersonV2,
   lenses: [PersonV1toV2],
+});
+
+const storeConfig: StoreConfig = {
+  entities: [Person],
 };
 
 // ─── Env type ──────────────────────────────────────────────────────────────
@@ -61,18 +65,22 @@ export default {
       // POST /save-v1
       if (request.method === "POST" && path === "/save-v1") {
         const body = (await request.json()) as any;
-        const entity = await store.saveEntity(PersonV1, {
-          firstName: body.firstName,
-          lastName: body.lastName,
-          email: body.email,
-        });
+        const entity = await store.saveEntity(
+          Person,
+          {
+            firstName: body.firstName,
+            lastName: body.lastName,
+            email: body.email,
+          },
+          { as: PersonV1 },
+        );
         return Response.json(entity);
       }
 
       // POST /save-v2
       if (request.method === "POST" && path === "/save-v2") {
         const body = (await request.json()) as any;
-        const entity = await store.saveEntity(PersonV2, {
+        const entity = await store.saveEntity(Person, {
           fullName: body.fullName,
           email: body.email,
           age: body.age,
@@ -83,13 +91,13 @@ export default {
       // GET /load/:id
       if (request.method === "GET" && path.startsWith("/load/")) {
         const id = path.slice("/load/".length);
-        const entity = await store.loadEntity(PersonV2, id);
+        const entity = await store.loadEntity(Person, id);
         return Response.json(entity);
       }
 
       // GET /list
       if (request.method === "GET" && path === "/list") {
-        const entities = await store.loadEntities(PersonV2);
+        const entities = await store.loadEntities(Person);
         return Response.json(entities);
       }
 
@@ -97,7 +105,7 @@ export default {
       if (request.method === "PATCH" && path.startsWith("/update/")) {
         const id = path.slice("/update/".length);
         const body = (await request.json()) as any;
-        const entity = await store.updateEntity(PersonV2, id, body);
+        const entity = await store.updateEntity(Person, id, body);
         return Response.json(entity);
       }
 
