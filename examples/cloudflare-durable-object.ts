@@ -20,13 +20,9 @@
  * need so the example typechecks without that dependency.
  */
 import { Schema } from "effect";
-import {
-  StoricDO,
-  defineEntity,
-  defineLens,
-  createStore,
-} from "../packages/cloudflare/src/index.ts";
-import type { StoreConfig } from "../packages/cloudflare/src/index.ts";
+import { defineEntity, defineLens } from "../packages/core/src/index.ts";
+import type { StoreConfig } from "../packages/core/src/index.ts";
+import { StoricDO, createStore } from "../packages/cloudflare/src/index.ts";
 
 // Minimal Cloudflare type stubs for this example
 declare class DurableObjectStub<_T = unknown> {

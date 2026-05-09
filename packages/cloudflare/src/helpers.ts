@@ -14,7 +14,8 @@ import { doStubPersistence } from "./stub-persistence.ts";
  *
  * @example
  * ```ts
- * import { makeStoreLayer, Store } from "@storic/cloudflare";
+ * import { Store } from "@storic/core";
+ * import { makeStoreLayer } from "@storic/cloudflare";
  *
  * const layer = makeStoreLayer(env.STORE, "my-store", { entities: [Person] });
  * ```
@@ -36,7 +37,8 @@ export const makeStoreLayer = (
  *
  * @example
  * ```ts
- * import { createStore, defineEntity } from "@storic/cloudflare";
+ * import { defineEntity } from "@storic/core";
+ * import { createStore } from "@storic/cloudflare";
  *
  * const Person = defineEntity({ schema: PersonV2, lenses: [PersonV1toV2] });
  * const store = createStore(env.STORE, "my-store", { entities: [Person] });

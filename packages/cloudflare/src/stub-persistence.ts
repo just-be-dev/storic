@@ -11,7 +11,8 @@ import type { StoricDO } from "./storic-object.ts";
  *
  * @example
  * ```ts
- * import { Store, doStubPersistence } from "@storic/cloudflare";
+ * import { Store } from "@storic/core";
+ * import { doStubPersistence } from "@storic/cloudflare";
  *
  * const stub = env.STORE.get(env.STORE.idFromName("my-store"));
  * const storeLayer = Store.layer(config).pipe(

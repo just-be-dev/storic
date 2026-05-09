@@ -5,8 +5,9 @@
  * The DO is deployed as-is, with no schema knowledge.
  */
 import { Schema } from "effect";
-import { StoricDO, defineEntity, defineLens, createStore } from "../src/index.ts";
-import type { StoreConfig } from "../src/index.ts";
+import { defineEntity, defineLens } from "@storic/core";
+import type { StoreConfig } from "@storic/core";
+import { StoricDO, createStore } from "../src/index.ts";
 
 // Re-export StoricDO so wrangler can bind it
 export { StoricDO };
