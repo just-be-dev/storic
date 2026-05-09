@@ -1,8 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { Effect, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
-import { Store, computeIndexSpecs, SchemaRegistry } from "../src/index.ts";
-import type { StoreConfig } from "../src/index.ts";
+import { Store, computeIndexSpecs, SchemaRegistry, defineEntity } from "../src/index.ts";
 import { runStore } from "./test-helper.ts";
 
 describe("computeIndexSpecs", () => {
@@ -12,8 +11,7 @@ describe("computeIndexSpecs", () => {
       email: Schema.String.annotate({ index: true }),
     });
 
-    const config: StoreConfig = { schemas: [PersonV1], lenses: [] };
-    const registry = new SchemaRegistry(config);
+    const registry = new SchemaRegistry({ schemas: [PersonV1], lenses: [] });
     const specs = computeIndexSpecs(registry);
 
     expect(specs).toEqual([
@@ -31,8 +29,7 @@ describe("computeIndexSpecs", () => {
       email: Schema.String,
     });
 
-    const config: StoreConfig = { schemas: [PersonV1], lenses: [] };
-    const registry = new SchemaRegistry(config);
+    const registry = new SchemaRegistry({ schemas: [PersonV1], lenses: [] });
     const specs = computeIndexSpecs(registry);
 
     expect(specs).toEqual([]);
@@ -45,11 +42,7 @@ describe("Index sync (via Store initialization)", () => {
       firstName: Schema.String,
       email: Schema.String.annotate({ index: true }),
     });
-
-    const config: StoreConfig = {
-      schemas: [PersonV1],
-      lenses: [],
-    };
+    const Person = defineEntity({ schema: PersonV1 });
 
     const indexes = await runStore(
       Effect.gen(function* () {
@@ -62,7 +55,7 @@ describe("Index sync (via Store initialization)", () => {
         }>`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'entities' AND name LIKE 'idx_%'`;
         return rows.map((r) => r.name);
       }),
-      config,
+      { entities: [Person] },
     );
 
     expect(indexes).toContain("idx_entities_type");
@@ -74,11 +67,7 @@ describe("Index sync (via Store initialization)", () => {
       firstName: Schema.String,
       email: Schema.String,
     });
-
-    const config: StoreConfig = {
-      schemas: [PersonV1],
-      lenses: [],
-    };
+    const Person = defineEntity({ schema: PersonV1 });
 
     const indexes = await runStore(
       Effect.gen(function* () {
@@ -89,7 +78,7 @@ describe("Index sync (via Store initialization)", () => {
         }>`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'entities' AND name LIKE 'idx_%'`;
         return rows.map((r) => r.name);
       }),
-      config,
+      { entities: [Person] },
     );
 
     // Only the built-in type index

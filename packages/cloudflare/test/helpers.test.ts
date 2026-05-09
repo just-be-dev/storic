@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
 import { Effect, Layer, Schema } from "effect";
-import { Store, Persistence, defineLens } from "@storic/core";
+import { Store, Persistence, defineEntity, defineLens } from "@storic/core";
 import type { StoreConfig } from "@storic/core";
 import { doStubPersistence } from "../src/stub-persistence.ts";
 import { doStoragePersistence } from "../src/persistence.ts";
@@ -122,9 +122,13 @@ const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
   }),
 });
 
-const testConfig: StoreConfig = {
-  schemas: [PersonV1, PersonV2],
+const Person = defineEntity({
+  schema: PersonV2,
   lenses: [PersonV1toV2],
+});
+
+const testConfig: StoreConfig = {
+  entities: [Person],
 };
 
 // ─── Import helpers under test ─────────────────────────────────────────────
@@ -141,14 +145,15 @@ function createTestStore(ns: DurableObjectNamespace<any>, name: string, config: 
 
   return {
     run,
-    saveEntity: (schema: any, data: any, opts?: any) =>
-      run(Store.use((s) => s.saveEntity(schema, data, opts))),
-    loadEntity: (schema: any, id: string) => run(Store.use((s) => s.loadEntity(schema, id))),
-    loadEntities: (schema: any, opts?: any) => run(Store.use((s) => s.loadEntities(schema, opts))),
-    updateEntity: (schema: any, id: string, data: any, opts?: any) =>
-      run(Store.use((s) => s.updateEntity(schema, id, data, opts))),
-    patchEntities: (schema: any, patch: any, opts?: any) =>
-      run(Store.use((s) => s.patchEntities(schema, patch, opts))),
+    saveEntity: (entity: any, data: any, opts?: any) =>
+      run(Store.use((s) => s.saveEntity(entity, data, opts))),
+    loadEntity: (entity: any, id: string, opts?: any) =>
+      run(Store.use((s) => s.loadEntity(entity, id, opts))),
+    loadEntities: (entity: any, opts?: any) => run(Store.use((s) => s.loadEntities(entity, opts))),
+    updateEntity: (entity: any, id: string, data: any, opts?: any) =>
+      run(Store.use((s) => s.updateEntity(entity, id, data, opts))),
+    patchEntities: (entity: any, patch: any, opts?: any) =>
+      run(Store.use((s) => s.patchEntities(entity, patch, opts))),
     deleteEntity: (id: string) => run(Store.use((s) => s.deleteEntity(id))),
   };
 }
@@ -160,11 +165,15 @@ describe("createStore", () => {
     const ns = makeMockNamespace();
     const store = createTestStore(ns, "test", testConfig);
 
-    const entity = await store.saveEntity(PersonV1, {
-      firstName: "Alice",
-      lastName: "Smith",
-      email: "alice@example.com",
-    });
+    const entity = await store.saveEntity(
+      Person,
+      {
+        firstName: "Alice",
+        lastName: "Smith",
+        email: "alice@example.com",
+      },
+      { as: PersonV1 },
+    );
 
     expect(entity.id).toBeDefined();
     expect(entity.data._tag).toBe("Person.v1");
@@ -177,13 +186,17 @@ describe("createStore", () => {
     const ns = makeMockNamespace();
     const store = createTestStore(ns, "test", testConfig);
 
-    const saved = await store.saveEntity(PersonV1, {
-      firstName: "Bob",
-      lastName: "Jones",
-      email: "bob@example.com",
-    });
+    const saved = await store.saveEntity(
+      Person,
+      {
+        firstName: "Bob",
+        lastName: "Jones",
+        email: "bob@example.com",
+      },
+      { as: PersonV1 },
+    );
 
-    const loaded = await store.loadEntity(PersonV1, saved.id);
+    const loaded = await store.loadEntity(Person, saved.id, { as: PersonV1 });
     expect(loaded.data).toEqual(saved.data);
   });
 
@@ -191,13 +204,17 @@ describe("createStore", () => {
     const ns = makeMockNamespace();
     const store = createTestStore(ns, "test", testConfig);
 
-    const saved = await store.saveEntity(PersonV1, {
-      firstName: "Carol",
-      lastName: "White",
-      email: "carol@example.com",
-    });
+    const saved = await store.saveEntity(
+      Person,
+      {
+        firstName: "Carol",
+        lastName: "White",
+        email: "carol@example.com",
+      },
+      { as: PersonV1 },
+    );
 
-    const asV2 = await store.loadEntity(PersonV2, saved.id);
+    const asV2 = await store.loadEntity(Person, saved.id);
     expect(asV2.data._tag).toBe("Person.v2");
     expect(asV2.data.fullName).toBe("Carol White");
     expect(asV2.data.age).toBe(0);
@@ -207,18 +224,22 @@ describe("createStore", () => {
     const ns = makeMockNamespace();
     const store = createTestStore(ns, "test", testConfig);
 
-    await store.saveEntity(PersonV1, {
-      firstName: "A",
-      lastName: "B",
-      email: "ab@example.com",
-    });
-    await store.saveEntity(PersonV2, {
+    await store.saveEntity(
+      Person,
+      {
+        firstName: "A",
+        lastName: "B",
+        email: "ab@example.com",
+      },
+      { as: PersonV1 },
+    );
+    await store.saveEntity(Person, {
       fullName: "C D",
       email: "cd@example.com",
       age: 30,
     });
 
-    const all = await store.loadEntities(PersonV2);
+    const all = await store.loadEntities(Person);
     expect(all).toHaveLength(2);
     for (const e of all) {
       expect(e.data._tag).toBe("Person.v2");
@@ -230,14 +251,14 @@ describe("createStore", () => {
     const store = createTestStore(ns, "test", testConfig);
 
     for (let i = 0; i < 5; i++) {
-      await store.saveEntity(PersonV2, {
+      await store.saveEntity(Person, {
         fullName: `Person ${i}`,
         email: `p${i}@example.com`,
         age: 20 + i,
       });
     }
 
-    const page = await store.loadEntities(PersonV2, { limit: 2, offset: 1 });
+    const page = await store.loadEntities(Person, { limit: 2, offset: 1 });
     expect(page).toHaveLength(2);
   });
 
@@ -245,13 +266,13 @@ describe("createStore", () => {
     const ns = makeMockNamespace();
     const store = createTestStore(ns, "test", testConfig);
 
-    const saved = await store.saveEntity(PersonV2, {
+    const saved = await store.saveEntity(Person, {
       fullName: "Diana Prince",
       email: "diana@example.com",
       age: 30,
     });
 
-    const updated = await store.updateEntity(PersonV2, saved.id, { age: 31 });
+    const updated = await store.updateEntity(Person, saved.id, { age: 31 });
     expect(updated.data.fullName).toBe("Diana Prince");
     expect(updated.data.email).toBe("diana@example.com");
     expect(updated.data.age).toBe(31);
@@ -261,21 +282,21 @@ describe("createStore", () => {
     const ns = makeMockNamespace();
     const store = createTestStore(ns, "test", testConfig);
 
-    await store.saveEntity(PersonV2, {
+    await store.saveEntity(Person, {
       fullName: "E F",
       email: "ef@example.com",
       age: 10,
     });
-    await store.saveEntity(PersonV2, {
+    await store.saveEntity(Person, {
       fullName: "G H",
       email: "gh@example.com",
       age: 20,
     });
 
-    const count = await store.patchEntities(PersonV2, { age: 50 });
+    const count = await store.patchEntities(Person, { age: 50 });
     expect(count).toBe(2);
 
-    const all = await store.loadEntities(PersonV2);
+    const all = await store.loadEntities(Person);
     for (const e of all) {
       expect(e.data.age).toBe(50);
     }
@@ -285,36 +306,44 @@ describe("createStore", () => {
     const ns = makeMockNamespace();
     const store = createTestStore(ns, "test", testConfig);
 
-    const saved = await store.saveEntity(PersonV1, {
-      firstName: "Gone",
-      lastName: "Soon",
-      email: "gone@example.com",
-    });
+    const saved = await store.saveEntity(
+      Person,
+      {
+        firstName: "Gone",
+        lastName: "Soon",
+        email: "gone@example.com",
+      },
+      { as: PersonV1 },
+    );
 
     await store.deleteEntity(saved.id);
 
-    await expect(store.loadEntity(PersonV1, saved.id)).rejects.toThrow();
+    await expect(store.loadEntity(Person, saved.id, { as: PersonV1 })).rejects.toThrow();
   });
 
   test("loadEntity rejects for missing entity", async () => {
     const ns = makeMockNamespace();
     const store = createTestStore(ns, "test", testConfig);
 
-    await expect(store.loadEntity(PersonV1, "nonexistent")).rejects.toThrow();
+    await expect(store.loadEntity(Person, "nonexistent", { as: PersonV1 })).rejects.toThrow();
   });
 
   test("run escape hatch executes custom effects", async () => {
     const ns = makeMockNamespace();
     const store = createTestStore(ns, "test", testConfig);
 
-    await store.saveEntity(PersonV1, {
-      firstName: "Test",
-      lastName: "User",
-      email: "test@example.com",
-    });
+    await store.saveEntity(
+      Person,
+      {
+        firstName: "Test",
+        lastName: "User",
+        email: "test@example.com",
+      },
+      { as: PersonV1 },
+    );
 
     const count = await store.run(
-      Store.use((s) => Effect.map(s.loadEntities(PersonV2), (entities) => entities.length)),
+      Store.use((s) => Effect.map(s.loadEntities(Person), (entities) => entities.length)),
     );
 
     expect(count).toBe(1);
@@ -325,14 +354,18 @@ describe("createStore", () => {
     const storeA = createTestStore(ns, "store-a", testConfig);
     const storeB = createTestStore(ns, "store-b", testConfig);
 
-    await storeA.saveEntity(PersonV1, {
-      firstName: "Only",
-      lastName: "InA",
-      email: "a@example.com",
-    });
+    await storeA.saveEntity(
+      Person,
+      {
+        firstName: "Only",
+        lastName: "InA",
+        email: "a@example.com",
+      },
+      { as: PersonV1 },
+    );
 
-    const inA = await storeA.loadEntities(PersonV2);
-    const inB = await storeB.loadEntities(PersonV2);
+    const inA = await storeA.loadEntities(Person);
+    const inB = await storeB.loadEntities(Person);
 
     expect(inA).toHaveLength(1);
     expect(inB).toHaveLength(0);

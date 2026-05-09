@@ -1,7 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { Effect, Schema } from "effect";
-import { Store, defineLens } from "../src/index.ts";
-import type { StoreConfig } from "../src/index.ts";
+import { Store, defineEntity, defineLens } from "../src/index.ts";
 import { runStore } from "./test-helper.ts";
 
 // ─── Three-version schema chain ────────────────────────────────────────────
@@ -47,10 +46,12 @@ const v2tov3 = defineLens(PersonV2, PersonV3, {
   }),
 });
 
-const multiConfig: StoreConfig = {
-  schemas: [PersonV1, PersonV2, PersonV3],
+const Person = defineEntity({
+  schema: PersonV3,
   lenses: [v1tov2, v2tov3],
-};
+});
+
+const multiConfig = { entities: [Person] };
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
@@ -59,12 +60,16 @@ describe("Store: multi-hop lens transformations", () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        return yield* store.loadEntity(PersonV3, saved.id);
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.loadEntity(Person, saved.id);
       }),
       multiConfig,
     );
@@ -81,12 +86,12 @@ describe("Store: multi-hop lens transformations", () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV3, {
+        const saved = yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           verified: true,
         });
-        return yield* store.loadEntity(PersonV1, saved.id);
+        return yield* store.loadEntity(Person, saved.id, { as: PersonV1 });
       }),
       multiConfig,
     );
@@ -103,21 +108,29 @@ describe("Store: multi-hop lens transformations", () => {
     const entities = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV2, {
-          fullName: "Bob Jones",
-          email: "bob@example.com",
-        });
-        yield* store.saveEntity(PersonV3, {
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(
+          Person,
+          {
+            fullName: "Bob Jones",
+            email: "bob@example.com",
+          },
+          { as: PersonV2 },
+        );
+        yield* store.saveEntity(Person, {
           fullName: "Charlie Brown",
           email: "charlie@example.com",
           verified: true,
         });
-        return yield* store.loadEntities(PersonV3);
+        return yield* store.loadEntities(Person);
       }),
       multiConfig,
     );
@@ -133,21 +146,29 @@ describe("Store: multi-hop lens transformations", () => {
     const entities = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV2, {
-          fullName: "Bob Jones",
-          email: "bob@example.com",
-        });
-        yield* store.saveEntity(PersonV3, {
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(
+          Person,
+          {
+            fullName: "Bob Jones",
+            email: "bob@example.com",
+          },
+          { as: PersonV2 },
+        );
+        yield* store.saveEntity(Person, {
           fullName: "Charlie Brown",
           email: "charlie@example.com",
           verified: true,
         });
-        return yield* store.loadEntities(PersonV1);
+        return yield* store.loadEntities(Person, { as: PersonV1 });
       }),
       multiConfig,
     );
@@ -160,29 +181,37 @@ describe("Store: multi-hop lens transformations", () => {
     const result = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const a = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        const b = yield* store.saveEntity(PersonV2, {
-          fullName: "Bob Jones",
-          email: "bob@example.com",
-        });
-        const c = yield* store.saveEntity(PersonV3, {
+        const a = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        const b = yield* store.saveEntity(
+          Person,
+          {
+            fullName: "Bob Jones",
+            email: "bob@example.com",
+          },
+          { as: PersonV2 },
+        );
+        const c = yield* store.saveEntity(Person, {
           fullName: "Charlie Brown",
           email: "charlie@example.com",
           verified: true,
         });
 
         // email exists in all three versions
-        const affected = yield* store.patchEntities(PersonV3, {
+        const affected = yield* store.patchEntities(Person, {
           email: "redacted@example.com",
         });
 
-        const ar = yield* store.loadEntity(PersonV1, a.id);
-        const br = yield* store.loadEntity(PersonV2, b.id);
-        const cr = yield* store.loadEntity(PersonV3, c.id);
+        const ar = yield* store.loadEntity(Person, a.id, { as: PersonV1 });
+        const br = yield* store.loadEntity(Person, b.id, { as: PersonV2 });
+        const cr = yield* store.loadEntity(Person, c.id);
 
         return {
           affected,

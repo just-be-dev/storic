@@ -1,7 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { Effect, Schema } from "effect";
-import { Store } from "../src/index.ts";
-import { runStore, PersonV1, PersonV2, PersonV1toV2 } from "./test-helper.ts";
+import { Store, defineEntity } from "../src/index.ts";
+import { runStore, Person, PersonV1, PersonV2 } from "./test-helper.ts";
 
 // ─── Save & Load ────────────────────────────────────────────────────────────
 
@@ -10,11 +10,15 @@ describe("Store: saveEntity & loadEntity", () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        return yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
+        return yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
       }),
     );
 
@@ -34,13 +38,13 @@ describe("Store: saveEntity & loadEntity", () => {
       Effect.gen(function* () {
         const store = yield* Store;
         return yield* store.saveEntity(
-          PersonV1,
+          Person,
           {
             firstName: "Bob",
             lastName: "Jones",
             email: "bob@example.com",
           },
-          { id: "custom-id" },
+          { id: "custom-id", as: PersonV1 },
         );
       }),
     );
@@ -53,11 +57,15 @@ describe("Store: saveEntity & loadEntity", () => {
       Effect.gen(function* () {
         const store = yield* Store;
         return yield* store
-          .saveEntity(PersonV1, {
-            firstName: 42 as any,
-            lastName: "Smith",
-            email: "alice@example.com",
-          })
+          .saveEntity(
+            Person,
+            {
+              firstName: 42 as any,
+              lastName: "Smith",
+              email: "alice@example.com",
+            },
+            { as: PersonV1 },
+          )
           .pipe(
             Effect.map(() => "success" as const),
             Effect.catchTag("ValidationError", () => Effect.succeed("ValidationError" as const)),
@@ -72,12 +80,16 @@ describe("Store: saveEntity & loadEntity", () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        return yield* store.loadEntity(PersonV1, saved.id);
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.loadEntity(Person, saved.id, { as: PersonV1 });
       }),
     );
 
@@ -89,7 +101,7 @@ describe("Store: saveEntity & loadEntity", () => {
     const tag = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        return yield* store.loadEntity(PersonV1, "nonexistent").pipe(
+        return yield* store.loadEntity(Person, "nonexistent", { as: PersonV1 }).pipe(
           Effect.map(() => "success" as const),
           Effect.catchTag("EntityNotFoundError", () =>
             Effect.succeed("EntityNotFoundError" as const),
@@ -109,12 +121,16 @@ describe("Store: cross-version loading with lenses", () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        return yield* store.loadEntity(PersonV2, saved.id);
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.loadEntity(Person, saved.id);
       }),
     );
 
@@ -130,12 +146,12 @@ describe("Store: cross-version loading with lenses", () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV2, {
+        const saved = yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
-        return yield* store.loadEntity(PersonV1, saved.id);
+        return yield* store.loadEntity(Person, saved.id, { as: PersonV1 });
       }),
     );
 
@@ -151,16 +167,21 @@ describe("Store: cross-version loading with lenses", () => {
     const UnrelatedSchema = Schema.TaggedStruct("Unrelated.v1", {
       value: Schema.String,
     });
+    const Unrelated = defineEntity({ schema: UnrelatedSchema });
 
     const tag = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        return yield* store.loadEntity(UnrelatedSchema, saved.id).pipe(
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.loadEntity(Unrelated, saved.id).pipe(
           Effect.map(() => "success" as const),
           Effect.catchTag("LensPathNotFoundError", () =>
             Effect.succeed("LensPathNotFoundError" as const),
@@ -168,8 +189,7 @@ describe("Store: cross-version loading with lenses", () => {
         );
       }),
       {
-        schemas: [PersonV1, PersonV2, UnrelatedSchema],
-        lenses: [PersonV1toV2],
+        entities: [Person, Unrelated],
       },
     );
 
@@ -184,17 +204,25 @@ describe("Store: loadEntities (multi-version queries)", () => {
     const entities = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Bob",
-          lastName: "Jones",
-          email: "bob@example.com",
-        });
-        return yield* store.loadEntities(PersonV1);
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Bob",
+            lastName: "Jones",
+            email: "bob@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.loadEntities(Person, { as: PersonV1 });
       }),
     );
 
@@ -206,17 +234,21 @@ describe("Store: loadEntities (multi-version queries)", () => {
     const entities = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
-        return yield* store.loadEntities(PersonV2);
+        return yield* store.loadEntities(Person);
       }),
     );
 
@@ -232,17 +264,21 @@ describe("Store: loadEntities (multi-version queries)", () => {
     const entities = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
-        return yield* store.loadEntities(PersonV1);
+        return yield* store.loadEntities(Person, { as: PersonV1 });
       }),
     );
 
@@ -257,23 +293,27 @@ describe("Store: loadEntities (multi-version queries)", () => {
     const IsolatedSchema = Schema.TaggedStruct("Isolated.v1", {
       value: Schema.String,
     });
+    const Isolated = defineEntity({ schema: IsolatedSchema });
 
     const entities = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(IsolatedSchema, {
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(Isolated, {
           value: "test",
         });
-        return yield* store.loadEntities(IsolatedSchema);
+        return yield* store.loadEntities(Isolated);
       }),
       {
-        schemas: [PersonV1, PersonV2, IsolatedSchema],
-        lenses: [PersonV1toV2],
+        entities: [Person, Isolated],
       },
     );
 
@@ -289,14 +329,23 @@ describe("Store: updateEntity", () => {
     const updated = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        return yield* store.updateEntity(PersonV1, saved.id, {
-          email: "alice2@example.com",
-        });
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.updateEntity(
+          Person,
+          saved.id,
+          {
+            email: "alice2@example.com",
+          },
+          { as: PersonV1 },
+        );
       }),
     );
 
@@ -308,13 +357,13 @@ describe("Store: updateEntity", () => {
     const updated = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV2, {
+        const saved = yield* store.saveEntity(Person, {
           fullName: "Alice Smith",
           email: "alice@example.com",
           age: 25,
         });
         return yield* store.updateEntity(
-          PersonV2,
+          Person,
           saved.id,
           {
             fullName: "Alice Johnson",
@@ -334,12 +383,14 @@ describe("Store: updateEntity", () => {
     const tag = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        return yield* store.updateEntity(PersonV1, "nonexistent", { email: "new@test.com" }).pipe(
-          Effect.map(() => "success" as const),
-          Effect.catchTag("EntityNotFoundError", () =>
-            Effect.succeed("EntityNotFoundError" as const),
-          ),
-        );
+        return yield* store
+          .updateEntity(Person, "nonexistent", { email: "new@test.com" }, { as: PersonV1 })
+          .pipe(
+            Effect.map(() => "success" as const),
+            Effect.catchTag("EntityNotFoundError", () =>
+              Effect.succeed("EntityNotFoundError" as const),
+            ),
+          );
       }),
     );
 
@@ -356,25 +407,29 @@ describe("Store: patchEntities", () => {
         const store = yield* Store;
 
         // Save one of each version
-        const alice = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        const bob = yield* store.saveEntity(PersonV2, {
+        const alice = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        const bob = yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
 
         // Patch email across all Person records (email exists in both v1 and v2)
-        const affected = yield* store.patchEntities(PersonV2, {
+        const affected = yield* store.patchEntities(Person, {
           email: "redacted@example.com",
         });
 
         // Reload and verify
-        const aliceReloaded = yield* store.loadEntity(PersonV1, alice.id);
-        const bobReloaded = yield* store.loadEntity(PersonV2, bob.id);
+        const aliceReloaded = yield* store.loadEntity(Person, alice.id, { as: PersonV1 });
+        const bobReloaded = yield* store.loadEntity(Person, bob.id);
 
         return { affected, alice: aliceReloaded.data, bob: bobReloaded.data };
       }),
@@ -392,24 +447,28 @@ describe("Store: patchEntities", () => {
       Effect.gen(function* () {
         const store = yield* Store;
 
-        const alice = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        const bob = yield* store.saveEntity(PersonV2, {
+        const alice = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        const bob = yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
 
         // Patch age — only exists in PersonV2, so PersonV1 records are untouched
-        const affected = yield* store.patchEntities(PersonV2, {
+        const affected = yield* store.patchEntities(Person, {
           age: 99,
         });
 
-        const aliceReloaded = yield* store.loadEntity(PersonV1, alice.id);
-        const bobReloaded = yield* store.loadEntity(PersonV2, bob.id);
+        const aliceReloaded = yield* store.loadEntity(Person, alice.id, { as: PersonV1 });
+        const bobReloaded = yield* store.loadEntity(Person, bob.id);
 
         return { affected, alice: aliceReloaded.data, bob: bobReloaded.data };
       }),
@@ -425,19 +484,19 @@ describe("Store: patchEntities", () => {
     const IsolatedSchema = Schema.TaggedStruct("Isolated.v1", {
       value: Schema.String,
     });
+    const Isolated = defineEntity({ schema: IsolatedSchema });
 
     const affected = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(IsolatedSchema, { value: "test" });
+        yield* store.saveEntity(Isolated, { value: "test" });
         // Patch a field that doesn't exist in the schema
-        return yield* store.patchEntities(IsolatedSchema, {
+        return yield* store.patchEntities(Isolated, {
           nonexistent: "nope",
         } as any);
       }),
       {
-        schemas: [IsolatedSchema],
-        lenses: [],
+        entities: [Isolated],
       },
     );
 
@@ -452,19 +511,28 @@ describe("Store: filters", () => {
     const result = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Bob",
-          lastName: "Jones",
-          email: "bob@example.com",
-        });
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Bob",
+            lastName: "Jones",
+            email: "bob@example.com",
+          },
+          { as: PersonV1 },
+        );
 
-        return yield* store.loadEntities(PersonV1, {
+        return yield* store.loadEntities(Person, {
           filters: [{ field: "email", op: "eq", value: "alice@example.com" }],
+          as: PersonV1,
         });
       }),
     );
@@ -477,18 +545,18 @@ describe("Store: filters", () => {
     const result = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(Person, {
           fullName: "Alice Smith",
           email: "alice@example.com",
           age: 25,
         });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
 
-        return yield* store.loadEntities(PersonV2, {
+        return yield* store.loadEntities(Person, {
           filters: [{ field: "age", op: "neq", value: 25 }],
         });
       }),
@@ -502,23 +570,23 @@ describe("Store: filters", () => {
     const result = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(Person, {
           fullName: "Young",
           email: "young@example.com",
           age: 20,
         });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(Person, {
           fullName: "Middle",
           email: "mid@example.com",
           age: 35,
         });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(Person, {
           fullName: "Old",
           email: "old@example.com",
           age: 60,
         });
 
-        return yield* store.loadEntities(PersonV2, {
+        return yield* store.loadEntities(Person, {
           filters: [
             { field: "age", op: "gte", value: 30 },
             { field: "age", op: "lt", value: 50 },
@@ -535,23 +603,35 @@ describe("Store: filters", () => {
     const result = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Bob",
-          lastName: "Jones",
-          email: "bob@example.com",
-        });
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Charlie",
-          lastName: "Brown",
-          email: "charlie@example.com",
-        });
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Bob",
+            lastName: "Jones",
+            email: "bob@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Charlie",
+            lastName: "Brown",
+            email: "charlie@example.com",
+          },
+          { as: PersonV1 },
+        );
 
-        return yield* store.loadEntities(PersonV1, {
+        return yield* store.loadEntities(Person, {
           filters: [
             {
               field: "email",
@@ -559,6 +639,7 @@ describe("Store: filters", () => {
               value: ["alice@example.com", "charlie@example.com"],
             },
           ],
+          as: PersonV1,
         });
       }),
     );
@@ -572,19 +653,28 @@ describe("Store: filters", () => {
     const result = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Bob",
-          lastName: "Jones",
-          email: "bob@other.com",
-        });
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Bob",
+            lastName: "Jones",
+            email: "bob@other.com",
+          },
+          { as: PersonV1 },
+        );
 
-        return yield* store.loadEntities(PersonV1, {
+        return yield* store.loadEntities(Person, {
           filters: [{ field: "email", op: "like", value: "%@example.com" }],
+          as: PersonV1,
         });
       }),
     );
@@ -597,25 +687,33 @@ describe("Store: filters", () => {
     const result = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const alice = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        const bob = yield* store.saveEntity(PersonV1, {
-          firstName: "Bob",
-          lastName: "Jones",
-          email: "bob@example.com",
-        });
-
-        const affected = yield* store.patchEntities(
-          PersonV1,
-          { email: "redacted@example.com" },
-          { filters: [{ field: "firstName", op: "eq", value: "Alice" }] },
+        const alice = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        const bob = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Bob",
+            lastName: "Jones",
+            email: "bob@example.com",
+          },
+          { as: PersonV1 },
         );
 
-        const aliceReloaded = yield* store.loadEntity(PersonV1, alice.id);
-        const bobReloaded = yield* store.loadEntity(PersonV1, bob.id);
+        const affected = yield* store.patchEntities(
+          Person,
+          { email: "redacted@example.com" },
+          { filters: [{ field: "firstName", op: "eq", value: "Alice" }], as: PersonV1 },
+        );
+
+        const aliceReloaded = yield* store.loadEntity(Person, alice.id, { as: PersonV1 });
+        const bobReloaded = yield* store.loadEntity(Person, bob.id, { as: PersonV1 });
 
         return { affected, alice: aliceReloaded.data, bob: bobReloaded.data };
       }),
@@ -630,32 +728,40 @@ describe("Store: filters", () => {
     const result = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const alice = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        const bob = yield* store.saveEntity(PersonV2, {
+        const alice = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        const bob = yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
-        const charlie = yield* store.saveEntity(PersonV1, {
-          firstName: "Charlie",
-          lastName: "Brown",
-          email: "charlie@other.com",
-        });
+        const charlie = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Charlie",
+            lastName: "Brown",
+            email: "charlie@other.com",
+          },
+          { as: PersonV1 },
+        );
 
         // Patch email for records where email ends with @example.com
         const affected = yield* store.patchEntities(
-          PersonV2,
+          Person,
           { email: "redacted@example.com" },
           { filters: [{ field: "email", op: "like", value: "%@example.com" }] },
         );
 
-        const aliceR = yield* store.loadEntity(PersonV1, alice.id);
-        const bobR = yield* store.loadEntity(PersonV2, bob.id);
-        const charlieR = yield* store.loadEntity(PersonV1, charlie.id);
+        const aliceR = yield* store.loadEntity(Person, alice.id, { as: PersonV1 });
+        const bobR = yield* store.loadEntity(Person, bob.id);
+        const charlieR = yield* store.loadEntity(Person, charlie.id, { as: PersonV1 });
 
         return {
           affected,
@@ -676,17 +782,21 @@ describe("Store: filters", () => {
     const result = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(Person, {
           fullName: "Charlie Brown",
           email: "charlie@example.com",
           age: 20,
@@ -694,7 +804,7 @@ describe("Store: filters", () => {
 
         // Filter on age (v2-only). V1 records should be excluded entirely,
         // NOT returned unfiltered.
-        return yield* store.loadEntities(PersonV2, {
+        return yield* store.loadEntities(Person, {
           filters: [{ field: "age", op: "gt", value: 25 }],
         });
       }),
@@ -709,12 +819,16 @@ describe("Store: filters", () => {
     const result = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const alice = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        const bob = yield* store.saveEntity(PersonV2, {
+        const alice = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        const bob = yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
@@ -723,13 +837,13 @@ describe("Store: filters", () => {
         // Patch email where age > 25. V1 records don't have age,
         // so they must NOT be patched.
         const affected = yield* store.patchEntities(
-          PersonV2,
+          Person,
           { email: "redacted@example.com" },
           { filters: [{ field: "age", op: "gt", value: 25 }] },
         );
 
-        const aliceR = yield* store.loadEntity(PersonV1, alice.id);
-        const bobR = yield* store.loadEntity(PersonV2, bob.id);
+        const aliceR = yield* store.loadEntity(Person, alice.id, { as: PersonV1 });
+        const bobR = yield* store.loadEntity(Person, bob.id);
 
         return { affected, alice: aliceR.data.email, bob: bobR.data.email };
       }),
@@ -748,13 +862,17 @@ describe("Store: deleteEntity", () => {
     const tag = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
         yield* store.deleteEntity(saved.id);
-        return yield* store.loadEntity(PersonV1, saved.id).pipe(
+        return yield* store.loadEntity(Person, saved.id, { as: PersonV1 }).pipe(
           Effect.map(() => "found" as const),
           Effect.catchTag("EntityNotFoundError", () =>
             Effect.succeed("EntityNotFoundError" as const),
