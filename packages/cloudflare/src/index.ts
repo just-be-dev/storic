@@ -10,24 +10,8 @@
  * - `sqlStorageLayer` — Low-level SqlClient adapter (for advanced use)
  */
 
-// ─── Cloudflare-specific ────────────────────────────────────────────────────
 export { StoricDO, StoricObject } from "./storic-object.ts";
 export { doStubPersistence } from "./stub-persistence.ts";
 export { makeStoreLayer, createStore } from "./helpers.ts";
 export { doStoragePersistence } from "./persistence.ts";
 export { sqlStorageLayer } from "./sql-storage-client.ts";
-
-// ─── Re-export core for convenience ─────────────────────────────────────────
-export { Store, Persistence, defineLens, SchemaRegistry, getTag } from "@storic/core";
-export type {
-  AnyTaggedStruct,
-  EntityRecord,
-  Lens,
-  StoreConfig,
-  PersistenceShape,
-  PersistenceRecord,
-  StoredRecord,
-  IndexSpec,
-  InitSpec,
-  QueryParams,
-} from "@storic/core";

@@ -57,11 +57,27 @@ export interface LensPath {
   readonly steps: ReadonlyArray<LensPathStep>;
 }
 
+// ─── Entity ─────────────────────────────────────────────────────────────────
+
+/**
+ * A bundle of one or more schema versions linked by lenses. The `schema`
+ * field is the current/latest version that Store operations target by
+ * default; older versions are inferred from `lenses` (each lens carries its
+ * `from` and `to` schemas).
+ *
+ * Construct with `defineEntity` rather than building this object directly,
+ * so connectivity validation runs.
+ */
+export interface Entity<T extends AnyTaggedStruct = AnyTaggedStruct> {
+  readonly _tag: "Entity";
+  readonly schema: T;
+  readonly lenses: ReadonlyArray<Lens>;
+}
+
 // ─── Store Configuration ────────────────────────────────────────────────────
 
 export interface StoreConfig {
-  readonly schemas: ReadonlyArray<AnyTaggedStruct>;
-  readonly lenses?: ReadonlyArray<Lens>;
+  readonly entities: ReadonlyArray<Entity>;
 }
 
 // ─── Utility ────────────────────────────────────────────────────────────────

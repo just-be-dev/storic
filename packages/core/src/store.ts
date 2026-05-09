@@ -7,10 +7,18 @@ import {
   ValidationError,
 } from "./errors.ts";
 import { computeIndexSpecs } from "./compute-indexes.ts";
+import { entitySchemas } from "./entity.ts";
 import { Persistence } from "./persistence.ts";
 import type { Filter, TypePatch } from "./persistence.ts";
 import { SchemaRegistry, getTag } from "./schema-registry.ts";
-import type { AnyTaggedStruct, EntityRecord, LensPath, StoreConfig, UpdateMode } from "./types.ts";
+import type {
+  AnyTaggedStruct,
+  Entity,
+  EntityRecord,
+  Lens,
+  LensPath,
+  StoreConfig,
+} from "./types.ts";
 
 // ─── Internal validation helper ─────────────────────────────────────────────
 
@@ -69,66 +77,37 @@ export type StoreError =
 // ─── Store Service Shape ────────────────────────────────────────────────────
 
 export interface StoreShape {
-  /** Save an entity. The `_tag` field is added automatically. */
-  readonly saveEntity: <T extends AnyTaggedStruct>(
-    schema: T,
-    data: Omit<Schema.Schema.Type<T>, "_tag">,
-    opts?: { readonly id?: string },
-  ) => Effect.Effect<EntityRecord<T>, ValidationError | PersistenceError>;
+  /**
+   * Save an entity. The `_tag` field is added automatically.
+   *
+   * Defaults to the entity's `schema`. Pass `{ as: SchemaVN }` to save under a
+   * specific schema version reachable from the entity.
+   */
+  readonly saveEntity: {
+    <E extends Entity>(
+      entity: E,
+      data: Omit<Schema.Schema.Type<E["schema"]>, "_tag">,
+      opts?: { readonly id?: string },
+    ): Effect.Effect<EntityRecord<E["schema"]>, ValidationError | PersistenceError>;
 
-  /** Load a single entity by ID, projected to the given schema version. */
-  readonly loadEntity: <T extends AnyTaggedStruct>(
-    schema: T,
-    id: string,
-  ) => Effect.Effect<
-    EntityRecord<T>,
-    | EntityNotFoundError
-    | LensPathNotFoundError
-    | TransformError
-    | ValidationError
-    | PersistenceError
-  >;
+    <As extends AnyTaggedStruct>(
+      entity: Entity,
+      data: Omit<Schema.Schema.Type<As>, "_tag">,
+      opts: { readonly id?: string; readonly as: As },
+    ): Effect.Effect<EntityRecord<As>, ValidationError | PersistenceError>;
+  };
 
   /**
-   * Load all entities of a schema type, including connected versions
-   * auto-converted via lenses.
-   *
-   * **Pagination caveat:** When multiple schema versions are connected via
-   * lenses, `limit` and `offset` apply to the combined SQL query across all
-   * connected types. This means page boundaries may produce uneven type
-   * distributions (e.g., a page could contain only V1 records). For
-   * predictable pagination, filter to fields present in all versions or
-   * query a single unconnected type.
+   * Load a single entity by ID, projected to the entity's default schema
+   * (or the schema given by `{ as }`).
    */
-  readonly loadEntities: <T extends AnyTaggedStruct>(
-    schema: T,
-    opts?: {
-      readonly filters?: ReadonlyArray<Filter>;
-      readonly limit?: number;
-      readonly offset?: number;
-    },
-  ) => Effect.Effect<
-    Array<EntityRecord<T>>,
-    LensPathNotFoundError | TransformError | ValidationError | PersistenceError
-  >;
-
-  /**
-   * Update an entity's data.
-   *
-   * **Schema migration on write:** If the entity was stored as a different
-   * schema version, it will be projected to the target schema via lenses,
-   * the update applied, and the result stored as the target schema version.
-   * The stored `type` will change to match the target schema.
-   */
-  readonly updateEntity: {
-    /** Update with merge mode (default) — partial data is merged with existing. */
-    <T extends AnyTaggedStruct>(
-      schema: T,
+  readonly loadEntity: {
+    <E extends Entity>(
+      entity: E,
       id: string,
-      data: Partial<Omit<Schema.Schema.Type<T>, "_tag">>,
-      opts?: { readonly mode?: "merge" },
+      opts?: Record<string, never>,
     ): Effect.Effect<
-      EntityRecord<T>,
+      EntityRecord<E["schema"]>,
       | EntityNotFoundError
       | LensPathNotFoundError
       | TransformError
@@ -136,14 +115,12 @@ export interface StoreShape {
       | PersistenceError
     >;
 
-    /** Update with replace mode — full data replaces the existing entity. */
-    <T extends AnyTaggedStruct>(
-      schema: T,
+    <As extends AnyTaggedStruct>(
+      entity: Entity,
       id: string,
-      data: Omit<Schema.Schema.Type<T>, "_tag">,
-      opts: { readonly mode: "replace" },
+      opts: { readonly as: As },
     ): Effect.Effect<
-      EntityRecord<T>,
+      EntityRecord<As>,
       | EntityNotFoundError
       | LensPathNotFoundError
       | TransformError
@@ -153,21 +130,130 @@ export interface StoreShape {
   };
 
   /**
-   * Patch all entities reachable from the given schema type.
-   * For each connected schema version, only fields that exist in that
-   * version are applied. Optional filters narrow which records are patched.
-   * Returns the total number of records updated.
+   * Load all entities of this entity type, including older schema versions
+   * auto-converted via lenses. Scoped to the entity's own schemas only.
    *
-   * **Note:** Patches are applied at the SQL level via `json_patch` and
-   * bypass schema validation. Callers are responsible for ensuring patch
-   * values conform to schema field types. For validated updates, use
-   * `updateEntity` on individual records.
+   * **Pagination caveat:** When multiple schema versions exist, `limit` and
+   * `offset` apply to the combined query across all versions. For predictable
+   * pagination, filter to fields present in every version.
    */
-  readonly patchEntities: <T extends AnyTaggedStruct>(
-    schema: T,
-    patch: Partial<Omit<Schema.Schema.Type<T>, "_tag">>,
-    opts?: { readonly filters?: ReadonlyArray<Filter> },
-  ) => Effect.Effect<number, PersistenceError>;
+  readonly loadEntities: {
+    <E extends Entity>(
+      entity: E,
+      opts?: {
+        readonly filters?: ReadonlyArray<Filter>;
+        readonly limit?: number;
+        readonly offset?: number;
+      },
+    ): Effect.Effect<
+      Array<EntityRecord<E["schema"]>>,
+      LensPathNotFoundError | TransformError | ValidationError | PersistenceError
+    >;
+
+    <As extends AnyTaggedStruct>(
+      entity: Entity,
+      opts: {
+        readonly filters?: ReadonlyArray<Filter>;
+        readonly limit?: number;
+        readonly offset?: number;
+        readonly as: As;
+      },
+    ): Effect.Effect<
+      Array<EntityRecord<As>>,
+      LensPathNotFoundError | TransformError | ValidationError | PersistenceError
+    >;
+  };
+
+  /**
+   * Update an entity's data.
+   *
+   * **Schema migration on write:** If the entity was stored as a different
+   * schema version, it is projected via lenses, the update applied, and the
+   * result stored as the target schema version.
+   */
+  readonly updateEntity: {
+    // Default schema, merge mode (default)
+    <E extends Entity>(
+      entity: E,
+      id: string,
+      data: Partial<Omit<Schema.Schema.Type<E["schema"]>, "_tag">>,
+      opts?: { readonly mode?: "merge" },
+    ): Effect.Effect<
+      EntityRecord<E["schema"]>,
+      | EntityNotFoundError
+      | LensPathNotFoundError
+      | TransformError
+      | ValidationError
+      | PersistenceError
+    >;
+
+    // Default schema, replace mode
+    <E extends Entity>(
+      entity: E,
+      id: string,
+      data: Omit<Schema.Schema.Type<E["schema"]>, "_tag">,
+      opts: { readonly mode: "replace" },
+    ): Effect.Effect<
+      EntityRecord<E["schema"]>,
+      | EntityNotFoundError
+      | LensPathNotFoundError
+      | TransformError
+      | ValidationError
+      | PersistenceError
+    >;
+
+    // Explicit schema, merge mode
+    <As extends AnyTaggedStruct>(
+      entity: Entity,
+      id: string,
+      data: Partial<Omit<Schema.Schema.Type<As>, "_tag">>,
+      opts: { readonly mode?: "merge"; readonly as: As },
+    ): Effect.Effect<
+      EntityRecord<As>,
+      | EntityNotFoundError
+      | LensPathNotFoundError
+      | TransformError
+      | ValidationError
+      | PersistenceError
+    >;
+
+    // Explicit schema, replace mode
+    <As extends AnyTaggedStruct>(
+      entity: Entity,
+      id: string,
+      data: Omit<Schema.Schema.Type<As>, "_tag">,
+      opts: { readonly mode: "replace"; readonly as: As },
+    ): Effect.Effect<
+      EntityRecord<As>,
+      | EntityNotFoundError
+      | LensPathNotFoundError
+      | TransformError
+      | ValidationError
+      | PersistenceError
+    >;
+  };
+
+  /**
+   * Patch entities of this entity type. For each schema version, only fields
+   * that exist in that version are applied. Optional filters narrow which
+   * records are patched.
+   *
+   * **Note:** Patches bypass schema validation — callers are responsible for
+   * ensuring patch values conform to schema field types.
+   */
+  readonly patchEntities: {
+    <E extends Entity>(
+      entity: E,
+      patch: Partial<Omit<Schema.Schema.Type<E["schema"]>, "_tag">>,
+      opts?: { readonly filters?: ReadonlyArray<Filter> },
+    ): Effect.Effect<number, PersistenceError>;
+
+    <As extends AnyTaggedStruct>(
+      entity: Entity,
+      patch: Partial<Omit<Schema.Schema.Type<As>, "_tag">>,
+      opts: { readonly filters?: ReadonlyArray<Filter>; readonly as: As },
+    ): Effect.Effect<number, PersistenceError>;
+  };
 
   /** Delete an entity by ID. */
   readonly deleteEntity: (id: string) => Effect.Effect<void, PersistenceError>;
@@ -180,9 +266,10 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
    * Create a Store layer from a StoreConfig and a Persistence backend.
    *
    * On initialization:
-   * 1. Builds the schema registry and lens graph
-   * 2. Computes index specs from schema annotations
-   * 3. Calls persistence.initialize() with the index specs
+   * 1. Flattens entities into schemas + lenses
+   * 2. Builds the schema registry and lens graph
+   * 3. Computes index specs from schema annotations
+   * 4. Calls persistence.initialize() with the index specs
    */
   static readonly layer = (
     config: StoreConfig,
@@ -192,25 +279,55 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
       Effect.gen(function* () {
         const persistence = yield* Persistence;
 
+        // ── Flatten entities into schemas + lenses ──────────────────────
+        const schemas: AnyTaggedStruct[] = [];
+        const lenses: Lens[] = [];
+        const seenTags = new Set<string>();
+        const entitySchemaTags = new Map<Entity, ReadonlyArray<string>>();
+
+        for (const entity of config.entities) {
+          const schemasOfEntity = entitySchemas(entity);
+          entitySchemaTags.set(
+            entity,
+            schemasOfEntity.map((s) => getTag(s)),
+          );
+          for (const s of schemasOfEntity) {
+            const tag = getTag(s);
+            if (!seenTags.has(tag)) {
+              seenTags.add(tag);
+              schemas.push(s);
+            }
+          }
+          for (const lens of entity.lenses) {
+            lenses.push(lens);
+          }
+        }
+
         // ── Schema Registry ─────────────────────────────────────────────
-        const registry = new SchemaRegistry(config);
+        const registry = new SchemaRegistry({ schemas, lenses });
 
         // ── Compute and apply indexes ───────────────────────────────────
         const indexes = computeIndexSpecs(registry);
         yield* persistence.initialize({ indexes });
 
+        // ── Resolve target schema for an op (entity.schema or opts.as) ──
+        const resolveSchema = (
+          entity: Entity,
+          asOpt: AnyTaggedStruct | undefined,
+        ): AnyTaggedStruct => asOpt ?? entity.schema;
+
         // ── Implementation ──────────────────────────────────────────────
 
-        const saveEntity = <T extends AnyTaggedStruct>(
-          schema: T,
-          data: Omit<Schema.Schema.Type<T>, "_tag">,
-          opts?: { readonly id?: string },
-        ): Effect.Effect<EntityRecord<T>, ValidationError | PersistenceError> =>
+        const saveEntity = ((
+          entity: Entity,
+          data: Record<string, unknown>,
+          opts?: { readonly id?: string; readonly as?: AnyTaggedStruct },
+        ): Effect.Effect<EntityRecord<AnyTaggedStruct>, ValidationError | PersistenceError> =>
           Effect.gen(function* () {
+            const schema = resolveSchema(entity, opts?.as);
             const tag = getTag(schema);
-            const fullData = { _tag: tag, ...data } as unknown as Schema.Schema.Type<T>;
+            const fullData = { _tag: tag, ...data } as Record<string, unknown>;
 
-            // Validate using the schema
             try {
               validateSync(schema, fullData);
             } catch (error) {
@@ -224,22 +341,23 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
             const stored = yield* persistence.put({
               id,
               type: tag,
-              data: fullData as unknown as Record<string, unknown>,
+              data: fullData,
             });
 
             return {
               id: stored.id,
-              data: stored.data as unknown as Schema.Schema.Type<T>,
+              data: stored.data as unknown as Schema.Schema.Type<AnyTaggedStruct>,
               created_at: stored.created_at,
               updated_at: stored.updated_at,
             };
-          });
+          })) as StoreShape["saveEntity"];
 
-        const loadEntity = <T extends AnyTaggedStruct>(
-          schema: T,
+        const loadEntity = ((
+          entity: Entity,
           id: string,
+          opts?: { readonly as?: AnyTaggedStruct },
         ): Effect.Effect<
-          EntityRecord<T>,
+          EntityRecord<AnyTaggedStruct>,
           | EntityNotFoundError
           | LensPathNotFoundError
           | TransformError
@@ -247,6 +365,7 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
           | PersistenceError
         > =>
           Effect.gen(function* () {
+            const schema = resolveSchema(entity, opts?.as);
             const stored = yield* persistence.get(id);
 
             if (!stored) {
@@ -259,9 +378,9 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
             const targetTag = getTag(schema);
             const storedType = stored.type;
 
-            let converted: Schema.Schema.Type<T>;
+            let converted: Record<string, unknown>;
             if (storedType === targetTag) {
-              converted = stored.data as unknown as Schema.Schema.Type<T>;
+              converted = stored.data;
             } else {
               const path = registry.getPath(storedType, targetTag);
               if (!path) {
@@ -271,11 +390,8 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
                   message: `No lens path from ${storedType} to ${targetTag}`,
                 });
               }
-              converted = (yield* applyLensPath(path, stored.data)) as Schema.Schema.Type<T>;
-            }
+              converted = (yield* applyLensPath(path, stored.data)) as Record<string, unknown>;
 
-            // Validate lens output against target schema
-            if (storedType !== targetTag) {
               try {
                 validateSync(schema, converted);
               } catch (error) {
@@ -287,30 +403,34 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
 
             return {
               id: stored.id,
-              data: converted,
+              data: converted as unknown as Schema.Schema.Type<AnyTaggedStruct>,
               created_at: stored.created_at,
               updated_at: stored.updated_at,
             };
-          });
+          })) as StoreShape["loadEntity"];
 
-        const loadEntities = <T extends AnyTaggedStruct>(
-          schema: T,
+        const loadEntities = ((
+          entity: Entity,
           opts?: {
             readonly filters?: ReadonlyArray<Filter>;
             readonly limit?: number;
             readonly offset?: number;
+            readonly as?: AnyTaggedStruct;
           },
         ): Effect.Effect<
-          Array<EntityRecord<T>>,
+          Array<EntityRecord<AnyTaggedStruct>>,
           LensPathNotFoundError | TransformError | ValidationError | PersistenceError
         > =>
           Effect.gen(function* () {
+            const schema = resolveSchema(entity, opts?.as);
             const targetTag = getTag(schema);
             const filters = opts?.filters;
 
-            // Get all tags connected via lenses, excluding types that
-            // don't have all filtered fields (to avoid silently widening results)
-            const connectedTags = registry.getConnectedTags(targetTag).filter((tag) => {
+            // Scope to this entity's own schemas (not the global lens graph)
+            const entityTags = entitySchemaTags.get(entity) ?? [getTag(entity.schema)];
+
+            // Drop tags that don't have all filtered fields
+            const eligibleTags = entityTags.filter((tag) => {
               if (!filters?.length) return true;
               const tagSchema = registry.getSchemaByTag(tag);
               if (!tagSchema) return false;
@@ -318,21 +438,19 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
               return filters.every((f) => fieldNames.has(f.field));
             });
 
-            // Query for all connected types
             const rows = yield* persistence.query({
-              types: connectedTags,
+              types: eligibleTags,
               filters,
               limit: opts?.limit,
               offset: opts?.offset,
             });
 
-            // Transform each row to the target schema
-            const results: Array<EntityRecord<T>> = [];
+            const results: Array<EntityRecord<AnyTaggedStruct>> = [];
 
             for (const row of rows) {
-              let converted: Schema.Schema.Type<T>;
+              let converted: Record<string, unknown>;
               if (row.type === targetTag) {
-                converted = row.data as unknown as Schema.Schema.Type<T>;
+                converted = row.data;
               } else {
                 const path = registry.getPath(row.type, targetTag);
                 if (!path) {
@@ -342,9 +460,8 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
                     message: `No lens path from ${row.type} to ${targetTag}`,
                   });
                 }
-                converted = (yield* applyLensPath(path, row.data)) as Schema.Schema.Type<T>;
+                converted = (yield* applyLensPath(path, row.data)) as Record<string, unknown>;
 
-                // Validate lens output against target schema
                 try {
                   validateSync(schema, converted);
                 } catch (error) {
@@ -356,22 +473,22 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
 
               results.push({
                 id: row.id,
-                data: converted,
+                data: converted as unknown as Schema.Schema.Type<AnyTaggedStruct>,
                 created_at: row.created_at,
                 updated_at: row.updated_at,
               });
             }
 
             return results;
-          });
+          })) as StoreShape["loadEntities"];
 
-        const updateEntity = <T extends AnyTaggedStruct>(
-          schema: T,
+        const updateEntity = ((
+          entity: Entity,
           id: string,
-          data: Partial<Omit<Schema.Schema.Type<T>, "_tag">>,
-          opts?: { readonly mode?: UpdateMode },
+          data: Record<string, unknown>,
+          opts?: { readonly mode?: "merge" | "replace"; readonly as?: AnyTaggedStruct },
         ): Effect.Effect<
-          EntityRecord<T>,
+          EntityRecord<AnyTaggedStruct>,
           | EntityNotFoundError
           | LensPathNotFoundError
           | TransformError
@@ -379,9 +496,9 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
           | PersistenceError
         > =>
           Effect.gen(function* () {
+            const schema = resolveSchema(entity, opts?.as);
             const targetTag = getTag(schema);
 
-            // Fetch existing entity
             const stored = yield* persistence.get(id);
 
             if (!stored) {
@@ -393,7 +510,6 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
 
             const storedType = stored.type;
 
-            // Project existing data to target schema if needed
             let projected: Record<string, unknown>;
             if (storedType === targetTag) {
               projected = stored.data;
@@ -409,14 +525,12 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
               projected = (yield* applyLensPath(path, stored.data)) as Record<string, unknown>;
             }
 
-            // Apply update
             const mode = opts?.mode ?? "merge";
             const newData =
               mode === "merge"
-                ? ({ ...projected, ...data, _tag: targetTag } as unknown as Schema.Schema.Type<T>)
-                : ({ ...data, _tag: targetTag } as unknown as Schema.Schema.Type<T>);
+                ? { ...projected, ...data, _tag: targetTag }
+                : { ...data, _tag: targetTag };
 
-            // Validate
             try {
               validateSync(schema, newData);
             } catch (error) {
@@ -425,53 +539,56 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
               });
             }
 
-            // Persist (always stored as the target schema version)
             const updated = yield* persistence.update(id, {
               type: targetTag,
-              data: newData as unknown as Record<string, unknown>,
+              data: newData,
             });
 
             return {
               id: updated.id,
-              data: updated.data as unknown as Schema.Schema.Type<T>,
+              data: updated.data as unknown as Schema.Schema.Type<AnyTaggedStruct>,
               created_at: updated.created_at,
               updated_at: updated.updated_at,
             };
-          });
+          })) as StoreShape["updateEntity"];
 
-        const patchEntities = <T extends AnyTaggedStruct>(
-          schema: T,
-          patch: Partial<Omit<Schema.Schema.Type<T>, "_tag">>,
-          opts?: { readonly filters?: ReadonlyArray<Filter> },
+        const patchEntities = ((
+          entity: Entity,
+          patch: Record<string, unknown>,
+          opts?: {
+            readonly filters?: ReadonlyArray<Filter>;
+            readonly as?: AnyTaggedStruct;
+          },
         ): Effect.Effect<number, PersistenceError> =>
           Effect.gen(function* () {
-            const targetTag = getTag(schema);
-            const connectedTags = registry.getConnectedTags(targetTag);
+            // `as` exists for type-inference symmetry; patchEntities doesn't
+            // actually use a target schema at runtime — it walks all of the
+            // entity's schemas and patches per-version.
+            void opts?.as;
+
+            const entityTags = entitySchemaTags.get(entity) ?? [getTag(entity.schema)];
             const patchKeys = Object.keys(patch);
             const filters = opts?.filters;
 
             const patches: TypePatch[] = [];
 
-            for (const tag of connectedTags) {
+            for (const tag of entityTags) {
               const tagSchema = registry.getSchemaByTag(tag);
               if (!tagSchema) continue;
 
               const fieldNames = getFieldNames(tagSchema);
 
-              // Skip this type entirely if any filter references a field
-              // that doesn't exist — avoids silently widening the patch scope
               if (filters?.length) {
                 const allFiltersApplicable = filters.every((f) => fieldNames.has(f.field));
                 if (!allFiltersApplicable) continue;
               }
 
-              // Filter patch to only include fields present in this schema version
               const filtered: Record<string, unknown> = {};
               let hasKeys = false;
 
               for (const key of patchKeys) {
                 if (fieldNames.has(key)) {
-                  filtered[key] = (patch as Record<string, unknown>)[key];
+                  filtered[key] = patch[key];
                   hasKeys = true;
                 }
               }
@@ -488,7 +605,7 @@ export class Store extends ServiceMap.Service<Store, StoreShape>()("datastore/St
             if (patches.length === 0) return 0;
 
             return yield* persistence.patch({ patches });
-          });
+          })) as StoreShape["patchEntities"];
 
         const deleteEntity = (id: string): Effect.Effect<void, PersistenceError> =>
           persistence.remove(id);

@@ -1,7 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { Effect } from "effect";
 import { Store } from "../src/index.ts";
-import { runStore, PersonV1, PersonV2 } from "./test-helper.ts";
+import { runStore, Person, PersonV1 } from "./test-helper.ts";
 
 // ─── Cross-version update ───────────────────────────────────────────────────
 
@@ -12,19 +12,23 @@ describe("Store: cross-version updateEntity", () => {
         const store = yield* Store;
 
         // Save as V1
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
 
         // Update via V2 — should project V1→V2, apply update, store as V2
-        const updated = yield* store.updateEntity(PersonV2, saved.id, {
+        const updated = yield* store.updateEntity(Person, saved.id, {
           age: 30,
         });
 
         // Reload as V2 — should now be natively V2 (no lens needed)
-        const reloaded = yield* store.loadEntity(PersonV2, saved.id);
+        const reloaded = yield* store.loadEntity(Person, saved.id);
 
         return { updated: updated.data, reloaded: reloaded.data };
       }),
@@ -42,16 +46,21 @@ describe("Store: cross-version updateEntity", () => {
       Effect.gen(function* () {
         const store = yield* Store;
 
-        const saved = yield* store.saveEntity(PersonV2, {
+        const saved = yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 25,
         });
 
         // Update via V1 — projects V2→V1, applies update, stores as V1
-        const updated = yield* store.updateEntity(PersonV1, saved.id, {
-          email: "bob2@example.com",
-        });
+        const updated = yield* store.updateEntity(
+          Person,
+          saved.id,
+          {
+            email: "bob2@example.com",
+          },
+          { as: PersonV1 },
+        );
 
         return updated.data;
       }),
@@ -67,7 +76,7 @@ describe("Store: cross-version updateEntity", () => {
       Effect.gen(function* () {
         const store = yield* Store;
 
-        const saved = yield* store.saveEntity(PersonV2, {
+        const saved = yield* store.saveEntity(Person, {
           fullName: "Alice Smith",
           email: "alice@example.com",
           age: 25,
@@ -75,7 +84,7 @@ describe("Store: cross-version updateEntity", () => {
 
         // Replace mode with incomplete data should fail validation
         return yield* store
-          .updateEntity(PersonV2, saved.id, { fullName: "Alice Johnson" } as any, {
+          .updateEntity(Person, saved.id, { fullName: "Alice Johnson" } as any, {
             mode: "replace",
           })
           .pipe(
@@ -93,13 +102,13 @@ describe("Store: cross-version updateEntity", () => {
       Effect.gen(function* () {
         const store = yield* Store;
 
-        const saved = yield* store.saveEntity(PersonV2, {
+        const saved = yield* store.saveEntity(Person, {
           fullName: "Alice Smith",
           email: "alice@example.com",
           age: 25,
         });
 
-        const updated = yield* store.updateEntity(PersonV2, saved.id, {
+        const updated = yield* store.updateEntity(Person, saved.id, {
           age: 26,
         });
 

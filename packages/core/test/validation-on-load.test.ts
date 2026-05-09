@@ -1,8 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { Effect, Schema } from "effect";
-import { Store, defineLens } from "../src/index.ts";
-import type { StoreConfig } from "../src/index.ts";
-import { runStore, PersonV1, PersonV2 } from "./test-helper.ts";
+import { Store, defineEntity, defineLens } from "../src/index.ts";
+import { runStore, Person, PersonV1 } from "./test-helper.ts";
 
 // ─── Lens output validation ────────────────────────────────────────────────
 
@@ -29,21 +28,21 @@ describe("Store: lens output validation", () => {
       }),
     });
 
-    const config: StoreConfig = {
-      schemas: [BrokenV1, BrokenV2],
+    const Broken = defineEntity({
+      schema: BrokenV2,
       lenses: [brokenLens],
-    };
+    });
 
     const tag = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(BrokenV1, { name: "test" });
-        return yield* store.loadEntity(BrokenV2, saved.id).pipe(
+        const saved = yield* store.saveEntity(Broken, { name: "test" }, { as: BrokenV1 });
+        return yield* store.loadEntity(Broken, saved.id).pipe(
           Effect.map(() => "success" as const),
           Effect.catchTag("ValidationError", () => Effect.succeed("ValidationError" as const)),
         );
       }),
-      config,
+      { entities: [Broken] },
     );
 
     expect(tag).toBe("ValidationError");
@@ -70,21 +69,21 @@ describe("Store: lens output validation", () => {
       }),
     });
 
-    const config: StoreConfig = {
-      schemas: [BrokenV1, BrokenV2],
+    const Broken = defineEntity({
+      schema: BrokenV2,
       lenses: [brokenLens],
-    };
+    });
 
     const tag = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(BrokenV1, { name: "test" });
-        return yield* store.loadEntities(BrokenV2).pipe(
+        yield* store.saveEntity(Broken, { name: "test" }, { as: BrokenV1 });
+        return yield* store.loadEntities(Broken).pipe(
           Effect.map(() => "success" as const),
           Effect.catchTag("ValidationError", () => Effect.succeed("ValidationError" as const)),
         );
       }),
-      config,
+      { entities: [Broken] },
     );
 
     expect(tag).toBe("ValidationError");
@@ -95,12 +94,16 @@ describe("Store: lens output validation", () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        return yield* store.loadEntity(PersonV1, saved.id);
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.loadEntity(Person, saved.id, { as: PersonV1 });
       }),
     );
 
@@ -112,12 +115,16 @@ describe("Store: lens output validation", () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        return yield* store.loadEntity(PersonV2, saved.id);
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.loadEntity(Person, saved.id);
       }),
     );
 

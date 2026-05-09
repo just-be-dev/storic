@@ -21,6 +21,9 @@ export { computeIndexSpecs } from "./compute-indexes.ts";
 // ─── Lens ───────────────────────────────────────────────────────────────────
 export { defineLens } from "./lens.ts";
 
+// ─── Entity ─────────────────────────────────────────────────────────────────
+export { defineEntity, entitySchemas } from "./entity.ts";
+
 // ─── Schema Registry ────────────────────────────────────────────────────────
 export { SchemaRegistry, getTag } from "./schema-registry.ts";
 
@@ -40,6 +43,7 @@ export {
 // ─── Types ──────────────────────────────────────────────────────────────────
 export type {
   AnyTaggedStruct,
+  Entity,
   EntityRecord,
   Lens,
   LensPath,

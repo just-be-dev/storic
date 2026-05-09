@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { Effect, Layer, Ref, Schema } from "effect";
-import { Store, Persistence, PersistenceError, defineLens } from "@storic/core";
+import { Store, Persistence, PersistenceError, defineEntity, defineLens } from "@storic/core";
 import type { StoreConfig } from "@storic/core";
 import { TinyBaseStoreService, tinybasePersistenceLayer } from "../src/index.ts";
 
@@ -31,9 +31,13 @@ const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
   }),
 });
 
-const testConfig: StoreConfig = {
-  schemas: [PersonV1, PersonV2],
+const Person = defineEntity({
+  schema: PersonV2,
   lenses: [PersonV1toV2],
+});
+
+const testConfig: StoreConfig = {
+  entities: [Person],
 };
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
@@ -381,16 +385,20 @@ describe("Store integration", () => {
       Effect.gen(function* () {
         const store = yield* Store;
 
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
 
         expect(saved.data._tag).toBe("Person.v1");
         expect(saved.data.firstName).toBe("Alice");
 
-        const loaded = yield* store.loadEntity(PersonV1, saved.id);
+        const loaded = yield* store.loadEntity(Person, saved.id, { as: PersonV1 });
         expect(loaded.data).toEqual(saved.data);
       }),
     );
@@ -401,14 +409,18 @@ describe("Store integration", () => {
       Effect.gen(function* () {
         const store = yield* Store;
 
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
 
         // Load as V2 — should transform via lens
-        const asV2 = yield* store.loadEntity(PersonV2, saved.id);
+        const asV2 = yield* store.loadEntity(Person, saved.id);
         expect(asV2.data._tag).toBe("Person.v2");
         expect(asV2.data.fullName).toBe("Alice Smith");
         expect(asV2.data.email).toBe("alice@example.com");
@@ -422,18 +434,22 @@ describe("Store integration", () => {
       Effect.gen(function* () {
         const store = yield* Store;
 
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
 
-        const allAsV2 = yield* store.loadEntities(PersonV2);
+        const allAsV2 = yield* store.loadEntities(Person);
         expect(allAsV2).toHaveLength(2);
         for (const e of allAsV2) {
           expect(e.data._tag).toBe("Person.v2");
@@ -447,15 +463,24 @@ describe("Store integration", () => {
       Effect.gen(function* () {
         const store = yield* Store;
 
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
 
-        const updated = yield* store.updateEntity(PersonV1, saved.id, {
-          lastName: "Jones",
-        });
+        const updated = yield* store.updateEntity(
+          Person,
+          saved.id,
+          {
+            lastName: "Jones",
+          },
+          { as: PersonV1 },
+        );
 
         expect(updated.data.firstName).toBe("Alice");
         expect(updated.data.lastName).toBe("Jones");
@@ -469,15 +494,19 @@ describe("Store integration", () => {
       Effect.gen(function* () {
         const store = yield* Store;
 
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
 
         yield* store.deleteEntity(saved.id);
 
-        const result = yield* store.loadEntities(PersonV1);
+        const result = yield* store.loadEntities(Person, { as: PersonV1 });
         expect(result).toHaveLength(0);
       }),
     );
@@ -507,11 +536,15 @@ describe("TinyBaseStoreService", () => {
         const store = yield* Store;
         const { store: storeRef } = yield* TinyBaseStoreService;
 
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
 
         const tinyStore = yield* Ref.get(storeRef);
         const rowIds = tinyStore.getRowIds("entities");

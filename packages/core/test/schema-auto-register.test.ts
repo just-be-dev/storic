@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { Effect, Schema } from "effect";
-import { Store, defineLens } from "../src/index.ts";
+import { Store, defineEntity, defineLens } from "../src/index.ts";
 import { runStore } from "./test-helper.ts";
 
 // ─── Schemas ───────────────────────────────────────────────────────────────
@@ -28,23 +28,35 @@ const ItemV1toV2 = defineLens(ItemV1, ItemV2, {
   }),
 });
 
-// ─── Tests ─────────────────────────────────────────────────────────────────
+const Item = defineEntity({
+  schema: ItemV2,
+  lenses: [ItemV1toV2],
+});
 
-describe("Store: auto-registration of schemas from lenses", () => {
-  test("schemas referenced only by lenses are auto-registered", async () => {
-    // Only pass lenses, no schemas — both should be auto-registered
+// ─── Tests ─────────────────────────────────────────────────────────────────
+//
+// In the entity world, schemas reachable from a lens are inferred automatically.
+// These tests verify that defining an entity with `lenses` is sufficient to
+// register all the schemas the lenses connect — no need to enumerate them.
+
+describe("Store: schemas inferred from entity lenses", () => {
+  test("schemas referenced only by lenses are inferred from the entity", async () => {
+    // Entity carries its lens; both V1 and V2 are reachable.
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(ItemV1, {
-          name: "Widget",
-          price: 9.99,
-        });
-        return yield* store.loadEntity(ItemV2, saved.id);
+        const saved = yield* store.saveEntity(
+          Item,
+          {
+            name: "Widget",
+            price: 9.99,
+          },
+          { as: ItemV1 },
+        );
+        return yield* store.loadEntity(Item, saved.id);
       }),
       {
-        schemas: [],
-        lenses: [ItemV1toV2],
+        entities: [Item],
       },
     );
 
@@ -56,19 +68,22 @@ describe("Store: auto-registration of schemas from lenses", () => {
     });
   });
 
-  test("lens 'from' schema auto-registered when only 'to' is listed", async () => {
+  test("lens 'from' schema reachable when entity targets 'to'", async () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(ItemV1, {
-          name: "Gadget",
-          price: 19.99,
-        });
-        return yield* store.loadEntity(ItemV1, saved.id);
+        const saved = yield* store.saveEntity(
+          Item,
+          {
+            name: "Gadget",
+            price: 19.99,
+          },
+          { as: ItemV1 },
+        );
+        return yield* store.loadEntity(Item, saved.id, { as: ItemV1 });
       }),
       {
-        schemas: [ItemV2],
-        lenses: [ItemV1toV2],
+        entities: [Item],
       },
     );
 
@@ -79,19 +94,22 @@ describe("Store: auto-registration of schemas from lenses", () => {
     });
   });
 
-  test("lens 'to' schema auto-registered when only 'from' is listed", async () => {
+  test("lens 'to' schema reachable when loading via the lens", async () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(ItemV1, {
-          name: "Gadget",
-          price: 19.99,
-        });
-        return yield* store.loadEntity(ItemV2, saved.id);
+        const saved = yield* store.saveEntity(
+          Item,
+          {
+            name: "Gadget",
+            price: 19.99,
+          },
+          { as: ItemV1 },
+        );
+        return yield* store.loadEntity(Item, saved.id);
       }),
       {
-        schemas: [ItemV1],
-        lenses: [ItemV1toV2],
+        entities: [Item],
       },
     );
 
@@ -103,18 +121,16 @@ describe("Store: auto-registration of schemas from lenses", () => {
     });
   });
 
-  test("explicitly listed schemas are not overwritten by lens schemas", async () => {
-    // Both schemas explicitly listed + lens — should work identically
+  test("entity with both versions plus lens behaves identically", async () => {
     const entities = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(ItemV1, { name: "A", price: 1 });
-        yield* store.saveEntity(ItemV2, { name: "B", price: 2, currency: "EUR" });
-        return yield* store.loadEntities(ItemV2);
+        yield* store.saveEntity(Item, { name: "A", price: 1 }, { as: ItemV1 });
+        yield* store.saveEntity(Item, { name: "B", price: 2, currency: "EUR" });
+        return yield* store.loadEntities(Item);
       }),
       {
-        schemas: [ItemV1, ItemV2],
-        lenses: [ItemV1toV2],
+        entities: [Item],
       },
     );
 
@@ -122,7 +138,7 @@ describe("Store: auto-registration of schemas from lenses", () => {
     expect(entities.every((e) => e.data._tag === "Item.v2")).toBe(true);
   });
 
-  test("multi-hop lenses auto-register all intermediate schemas", async () => {
+  test("multi-hop lenses make all intermediate schemas reachable", async () => {
     const ItemV3 = Schema.TaggedStruct("Item.v3", {
       name: Schema.String,
       price: Schema.Number,
@@ -144,20 +160,28 @@ describe("Store: auto-registration of schemas from lenses", () => {
       }),
     });
 
-    // No schemas listed at all — all three should be auto-registered from lenses
+    const ItemMulti = defineEntity({
+      schema: ItemV3,
+      lenses: [ItemV1toV2, ItemV2toV3],
+    });
+
+    // Entity declares only the latest schema; V1 and V2 are inferred from lenses.
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(ItemV1, {
-          name: "Widget",
-          price: 9.99,
-        });
-        // V1 → V2 → V3 (two hops, all schemas from lenses)
-        return yield* store.loadEntity(ItemV3, saved.id);
+        const saved = yield* store.saveEntity(
+          ItemMulti,
+          {
+            name: "Widget",
+            price: 9.99,
+          },
+          { as: ItemV1 },
+        );
+        // V1 → V2 → V3 (two hops, all schemas inferred from lenses)
+        return yield* store.loadEntity(ItemMulti, saved.id);
       }),
       {
-        schemas: [],
-        lenses: [ItemV1toV2, ItemV2toV3],
+        entities: [ItemMulti],
       },
     );
 

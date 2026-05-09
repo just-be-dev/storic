@@ -89,7 +89,8 @@ function makeSqlStorageConnection(sql: SqlStorage): Connection {
  * @example
  * ```ts
  * import { DurableObject } from "cloudflare:workers";
- * import { Store, sqlStorageLayer } from "@storic/cloudflare";
+ * import { Store } from "@storic/core";
+ * import { sqlStorageLayer } from "@storic/cloudflare";
  *
  * export class MyDO extends DurableObject {
  *   private store: Store;

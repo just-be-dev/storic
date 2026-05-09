@@ -1,7 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import * as A from "@automerge/automerge";
 import { Effect, Layer, Ref, Schema } from "effect";
-import { Store, Persistence, PersistenceError, defineLens } from "@storic/core";
+import { Store, Persistence, PersistenceError, defineEntity, defineLens } from "@storic/core";
 import type { StoreConfig } from "@storic/core";
 import {
   AutomergeDocs,
@@ -37,9 +37,13 @@ const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
   }),
 });
 
-const testConfig: StoreConfig = {
-  schemas: [PersonV1, PersonV2],
+const Person = defineEntity({
+  schema: PersonV2,
   lenses: [PersonV1toV2],
+});
+
+const testConfig: StoreConfig = {
+  entities: [Person],
 };
 
 // ─── Test Helpers ────���───────────────────────────────────────────────────────
@@ -523,16 +527,20 @@ describe("Store integration", () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
 
         expect(saved.id).toBeDefined();
         expect(saved.data._tag).toBe("Person.v1");
 
-        return yield* store.loadEntity(PersonV1, saved.id);
+        return yield* store.loadEntity(Person, saved.id, { as: PersonV1 });
       }),
     );
 
@@ -543,12 +551,16 @@ describe("Store integration", () => {
     const entity = await runStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        return yield* store.loadEntity(PersonV2, saved.id);
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.loadEntity(Person, saved.id);
       }),
     );
 
@@ -561,18 +573,22 @@ describe("Store integration", () => {
       Effect.gen(function* () {
         const store = yield* Store;
 
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
 
-        return yield* store.loadEntities(PersonV2);
+        return yield* store.loadEntities(Person);
       }),
     );
 

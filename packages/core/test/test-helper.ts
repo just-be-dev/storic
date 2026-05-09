@@ -1,7 +1,7 @@
 import { Effect, Layer, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
 import { layer as sqliteLayer } from "@effect/sql-sqlite-bun/SqliteClient";
-import { Store, defineLens, Persistence } from "../src/index.ts";
+import { Store, defineEntity, defineLens, Persistence } from "../src/index.ts";
 import type { StoreConfig } from "../src/index.ts";
 import { sqlPersistenceLayer } from "@storic/sql";
 
@@ -37,11 +37,17 @@ export const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
   }),
 });
 
+// ─── Test Entity ────────────────────────────────────────────────────────────
+
+export const Person = defineEntity({
+  schema: PersonV2,
+  lenses: [PersonV1toV2],
+});
+
 // ─── Test Config ────────────────────────────────────────────────────────────
 
 export const testConfig: StoreConfig = {
-  schemas: [PersonV1, PersonV2],
-  lenses: [PersonV1toV2],
+  entities: [Person],
 };
 
 // ─── Test Layer ─────────────────────────────────────────────────────────────
@@ -54,7 +60,6 @@ export const makeTestLayer = (config: StoreConfig = testConfig) => {
   const SqlLive = sqliteLayer({ filename: ":memory:" });
   const PersistenceLive = sqlPersistenceLayer.pipe(Layer.provide(SqlLive));
   const StoreLive = Store.layer(config).pipe(Layer.provide(PersistenceLive));
-  // Merge so Store, Persistence, and SqlClient are all available in tests
   return Layer.mergeAll(StoreLive, PersistenceLive, SqlLive);
 };
 

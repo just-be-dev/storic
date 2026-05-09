@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
 import { Effect, Layer, Schema } from "effect";
-import { Store, Persistence, PersistenceError, defineLens } from "@storic/core";
+import { Store, Persistence, PersistenceError, defineEntity, defineLens } from "@storic/core";
 import type {
   StoreConfig,
   PersistenceRecord,
@@ -112,9 +112,13 @@ const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
   }),
 });
 
-const testConfig: StoreConfig = {
-  schemas: [PersonV1, PersonV2],
+const Person = defineEntity({
+  schema: PersonV2,
   lenses: [PersonV1toV2],
+});
+
+const testConfig: StoreConfig = {
+  entities: [Person],
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -357,12 +361,16 @@ describe("doStubPersistence → Store", () => {
     const result = await runStubStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        return yield* store.loadEntity(PersonV1, saved.id);
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.loadEntity(Person, saved.id, { as: PersonV1 });
       }),
     );
 
@@ -378,12 +386,16 @@ describe("doStubPersistence → Store", () => {
     const result = await runStubStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Bob",
-          lastName: "Jones",
-          email: "bob@example.com",
-        });
-        return yield* store.loadEntity(PersonV2, saved.id);
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Bob",
+            lastName: "Jones",
+            email: "bob@example.com",
+          },
+          { as: PersonV1 },
+        );
+        return yield* store.loadEntity(Person, saved.id);
       }),
     );
 
@@ -399,17 +411,21 @@ describe("doStubPersistence → Store", () => {
     const result = await runStubStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV1, {
-          firstName: "Alice",
-          lastName: "Smith",
-          email: "alice@example.com",
-        });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Alice",
+            lastName: "Smith",
+            email: "alice@example.com",
+          },
+          { as: PersonV1 },
+        );
+        yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 30,
         });
-        return yield* store.loadEntities(PersonV2);
+        return yield* store.loadEntities(Person);
       }),
     );
 
@@ -424,12 +440,12 @@ describe("doStubPersistence → Store", () => {
     const result = await runStubStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV2, {
+        const saved = yield* store.saveEntity(Person, {
           fullName: "Carol White",
           email: "carol@example.com",
           age: 25,
         });
-        return yield* store.updateEntity(PersonV2, saved.id, { age: 26 });
+        return yield* store.updateEntity(Person, saved.id, { age: 26 });
       }),
     );
 
@@ -442,13 +458,17 @@ describe("doStubPersistence → Store", () => {
     const result = await runStubStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Dave",
-          lastName: "Brown",
-          email: "dave@example.com",
-        });
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Dave",
+            lastName: "Brown",
+            email: "dave@example.com",
+          },
+          { as: PersonV1 },
+        );
         yield* store.deleteEntity(saved.id);
-        return yield* store.loadEntity(PersonV1, saved.id).pipe(
+        return yield* store.loadEntity(Person, saved.id, { as: PersonV1 }).pipe(
           Effect.map(() => "found" as const),
           Effect.catchTag("EntityNotFoundError", () => Effect.succeed("not-found" as const)),
         );
@@ -462,18 +482,18 @@ describe("doStubPersistence → Store", () => {
     const result = await runStubStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(Person, {
           fullName: "A B",
           email: "a@b.com",
           age: 10,
         });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(Person, {
           fullName: "C D",
           email: "c@d.com",
           age: 20,
         });
-        const count = yield* store.patchEntities(PersonV2, { age: 99 });
-        const all = yield* store.loadEntities(PersonV2);
+        const count = yield* store.patchEntities(Person, { age: 99 });
+        const all = yield* store.loadEntities(Person);
         return { count, all };
       }),
     );
@@ -489,9 +509,9 @@ describe("doStubPersistence → Store", () => {
       Effect.gen(function* () {
         const store = yield* Store;
         const saved = yield* store.saveEntity(
-          PersonV1,
+          Person,
           { firstName: "Eve", lastName: "Fox", email: "eve@fox.com" },
-          { id: "custom-id-123" },
+          { id: "custom-id-123", as: PersonV1 },
         );
         return saved;
       }),
@@ -504,17 +524,17 @@ describe("doStubPersistence → Store", () => {
     const result = await runStubStore(
       Effect.gen(function* () {
         const store = yield* Store;
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(Person, {
           fullName: "Alice Smith",
           email: "alice@example.com",
           age: 25,
         });
-        yield* store.saveEntity(PersonV2, {
+        yield* store.saveEntity(Person, {
           fullName: "Bob Jones",
           email: "bob@example.com",
           age: 35,
         });
-        return yield* store.loadEntities(PersonV2, {
+        return yield* store.loadEntities(Person, {
           filters: [{ field: "email", op: "eq", value: "bob@example.com" }],
         });
       }),
@@ -529,13 +549,17 @@ describe("doStubPersistence → Store", () => {
       Effect.gen(function* () {
         const store = yield* Store;
         // Save as V1
-        const saved = yield* store.saveEntity(PersonV1, {
-          firstName: "Grace",
-          lastName: "Hopper",
-          email: "grace@example.com",
-        });
+        const saved = yield* store.saveEntity(
+          Person,
+          {
+            firstName: "Grace",
+            lastName: "Hopper",
+            email: "grace@example.com",
+          },
+          { as: PersonV1 },
+        );
         // Update as V2 (should migrate)
-        const updated = yield* store.updateEntity(PersonV2, saved.id, {
+        const updated = yield* store.updateEntity(Person, saved.id, {
           age: 85,
         });
         return updated;
