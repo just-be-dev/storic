@@ -20,7 +20,12 @@
  * need so the example typechecks without that dependency.
  */
 import { Schema } from "effect";
-import { StoricDO, defineLens, createStore } from "../packages/cloudflare/src/index.ts";
+import {
+  StoricDO,
+  defineEntity,
+  defineLens,
+  createStore,
+} from "../packages/cloudflare/src/index.ts";
 import type { StoreConfig } from "../packages/cloudflare/src/index.ts";
 
 // Minimal Cloudflare type stubs for this example
@@ -64,9 +69,13 @@ const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
   }),
 });
 
-const storeConfig: StoreConfig = {
-  schemas: [PersonV1, PersonV2],
+const Person = defineEntity({
+  schema: PersonV2,
   lenses: [PersonV1toV2],
+});
+
+const storeConfig: StoreConfig = {
+  entities: [Person],
 };
 
 // ─── Env type ─────────────────────────────────────────────────────────────────
@@ -87,21 +96,23 @@ export default {
       // POST /contacts — create a contact (accepts V1 or V2 body)
       if (request.method === "POST" && path === "/contacts") {
         const body = (await request.json()) as Record<string, unknown>;
-        const schema = "fullName" in body ? PersonV2 : PersonV1;
-        const entity = await store.saveEntity(schema, body as any);
+        const entity =
+          "fullName" in body
+            ? await store.saveEntity(Person, body as any)
+            : await store.saveEntity(Person, body as any, { as: PersonV1 });
         return Response.json(entity, { status: 201 });
       }
 
-      // GET /contacts — list all contacts as V2
+      // GET /contacts — list all contacts as V2 (default)
       if (request.method === "GET" && path === "/contacts") {
-        const entities = await store.loadEntities(PersonV2);
+        const entities = await store.loadEntities(Person);
         return Response.json(entities);
       }
 
-      // GET /contacts/:id — load a single contact as V2
+      // GET /contacts/:id — load a single contact as V2 (default)
       if (request.method === "GET" && path.startsWith("/contacts/")) {
         const id = path.slice("/contacts/".length);
-        const entity = await store.loadEntity(PersonV2, id);
+        const entity = await store.loadEntity(Person, id);
         return Response.json(entity);
       }
 
@@ -109,7 +120,7 @@ export default {
       if (request.method === "PATCH" && path.startsWith("/contacts/")) {
         const id = path.slice("/contacts/".length);
         const body = (await request.json()) as Record<string, unknown>;
-        const entity = await store.updateEntity(PersonV2, id, body);
+        const entity = await store.updateEntity(Person, id, body);
         return Response.json(entity);
       }
 

@@ -1,7 +1,7 @@
 import { Console, Effect, Layer, Schema } from "effect";
 import { BunRuntime } from "@effect/platform-bun";
 import { layer as sqliteLayer } from "@effect/sql-sqlite-bun/SqliteClient";
-import { Store, defineLens } from "../packages/core/src/index.ts";
+import { Store, defineEntity, defineLens } from "../packages/core/src/index.ts";
 import { sqlPersistenceLayer } from "../packages/sql/src/index.ts";
 
 // ─── Schema definitions ───────────────────────────────────────────────────────
@@ -35,67 +35,73 @@ const PersonV1toV2 = defineLens(PersonV1, PersonV2, {
   }),
 });
 
+// ─── Entity ───────────────────────────────────────────────────────────────────
+
+const Person = defineEntity({
+  schema: PersonV2,
+  lenses: [PersonV1toV2],
+});
+
 // ─── Layer setup ──────────────────────────────────────────────────────────────
 
 const SqlLive = sqliteLayer({ filename: ":memory:" });
 const PersistenceLive = sqlPersistenceLayer.pipe(Layer.provide(SqlLive));
-const StoreLive = Store.layer({
-  schemas: [PersonV1, PersonV2],
-  lenses: [PersonV1toV2],
-}).pipe(Layer.provide(PersistenceLive));
+const StoreLive = Store.layer({ entities: [Person] }).pipe(Layer.provide(PersistenceLive));
 
 // ─── Main program ─────────────────────────────────────────────────────────────
 
 const program = Effect.gen(function* () {
   const store = yield* Store;
 
-  // ── 1. Save entities under different schema versions ─────────────────
-  const alice = yield* store.saveEntity(PersonV1, {
-    firstName: "Alice",
-    lastName: "Smith",
-    email: "alice@example.com",
-  });
+  // ── 1. Save entities — default schema is V2; use { as } to save as V1 ─
+  const alice = yield* store.saveEntity(
+    Person,
+    {
+      firstName: "Alice",
+      lastName: "Smith",
+      email: "alice@example.com",
+    },
+    { as: PersonV1 },
+  );
 
-  const bob = yield* store.saveEntity(PersonV2, {
+  const bob = yield* store.saveEntity(Person, {
     fullName: "Bob Jones",
     email: "bob@example.com",
     age: 30,
   });
 
-  yield* Console.log("Saved Alice (V1):", alice.data);
-  yield* Console.log("Saved Bob   (V2):", bob.data);
+  yield* Console.log("Saved Alice (stored V1):", alice.data);
+  yield* Console.log("Saved Bob   (stored V2):", bob.data);
 
-  // ── 2. Load individual entities with lens projection ─────────────────
-  const aliceAsV2 = yield* store.loadEntity(PersonV2, alice.id);
+  // ── 2. Load individual entities — default returns V2 (with V1 → V2 lens) ─
+  const aliceAsV2 = yield* store.loadEntity(Person, alice.id);
   yield* Console.log("\nAlice loaded as V2:", aliceAsV2.data);
 
-  const bobAsV1 = yield* store.loadEntity(PersonV1, bob.id);
+  const bobAsV1 = yield* store.loadEntity(Person, bob.id, { as: PersonV1 });
   yield* Console.log("Bob   loaded as V1:", bobAsV1.data);
 
-  // ── 3. Load ALL entities as V2 (V1 entries auto-converted) ───────────
-  const allAsV2 = yield* store.loadEntities(PersonV2);
+  // ── 3. Load ALL entities as V2 (default) ──────────────────────────────
+  const allAsV2 = yield* store.loadEntities(Person);
   yield* Console.log("\nAll persons as V2:");
   for (const e of allAsV2) {
     yield* Console.log(" ", e.data);
   }
 
-  // ── 4. Load ALL entities as V1 (V2 entries auto-converted) ───────────
-  const allAsV1 = yield* store.loadEntities(PersonV1);
+  // ── 4. Load ALL entities as V1 (V2 entries auto-converted) ────────────
+  const allAsV1 = yield* store.loadEntities(Person, { as: PersonV1 });
   yield* Console.log("\nAll persons as V1:");
   for (const e of allAsV1) {
     yield* Console.log(" ", e.data);
   }
 
-  // ── 5. Update with merge mode ────────────────────────────────────────
-  yield* store.updateEntity(PersonV1, alice.id, {
-    email: "alice2@example.com",
-  });
-  const aliceUpdated = yield* store.loadEntity(PersonV1, alice.id);
+  // ── 5. Update with merge mode (targets V1 explicitly) ─────────────────
+  yield* store.updateEntity(Person, alice.id, { email: "alice2@example.com" }, { as: PersonV1 });
+  const aliceUpdated = yield* store.loadEntity(Person, alice.id, { as: PersonV1 });
   yield* Console.log("\nAlice after merge update:", aliceUpdated.data);
 
   // ── 6. Delete ────────────────────────────────────────────────────────
   yield* store.deleteEntity(bob.id);
-  const remaining = yield* store.loadEntities(PersonV2);
+  const remaining = yield* store.loadEntities(Person);
   yield* Console.log("\nRemaining after deleting Bob:", remaining.length, "entity");
 
   yield* Console.log("\nDone.");
