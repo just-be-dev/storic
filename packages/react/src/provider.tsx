@@ -1,4 +1,4 @@
-import { Effect, ManagedRuntime } from "effect";
+import { ManagedRuntime } from "effect";
 import { Store, type StoreShape } from "@storic/core";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -41,7 +41,7 @@ export function StoricProvider({ runtime, fallback = null, children }: StoricPro
 
   useEffect(() => {
     let cancelled = false;
-    runtime.runPromise(Effect.flatMap(Store.asEffect(), Effect.succeed)).then(
+    runtime.runPromise(Store.asEffect()).then(
       (s) => {
         if (!cancelled) setStore(s);
       },

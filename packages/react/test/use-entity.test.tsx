@@ -1,7 +1,9 @@
 import "./setup.ts";
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, afterEach } from "bun:test";
 import { Suspense, useState } from "react";
-import { act, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+
+afterEach(() => cleanup());
 import {
   StoricProvider,
   useEntity,

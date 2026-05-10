@@ -1,4 +1,4 @@
-import { Effect, Fiber } from "effect";
+import { Cause, Effect, Fiber } from "effect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Store } from "@storic/core";
 import { useStoricRuntime } from "./provider.tsx";
@@ -28,10 +28,12 @@ export function useEffectQuery<A, E>(
       if (exit._tag === "Success") {
         setState({ data: exit.value, error: undefined, isLoading: false });
       } else {
-        // Extract first failure cause; defects bubble as-is.
+        // Extract the typed failure value; defects fall back to the squashed cause.
+        const failure = Cause.findErrorOption(exit.cause);
+        const error = failure._tag === "Some" ? failure.value : (Cause.squash(exit.cause) as E);
         setState((prev) => ({
           data: prev.data,
-          error: exit.cause as unknown as E,
+          error,
           isLoading: false,
         }));
       }

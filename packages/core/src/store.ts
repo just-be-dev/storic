@@ -348,7 +348,16 @@ export class Store extends Context.Service<Store, StoreShape>()("datastore/Store
           const sub = persistence.subscribe!({});
           const pump: Effect.Effect<void, never, never> = sub.pipe(
             Stream.runForEach((event: ChangeEvent) => bus.publish(event)),
-            Effect.catchCause(() => Effect.void),
+            Effect.catchCause((cause) =>
+              Effect.sync(() => {
+                if (typeof console !== "undefined") {
+                  console.warn(
+                    "[storic] backend change-stream pump failed; subscribers will stop receiving events",
+                    cause,
+                  );
+                }
+              }),
+            ),
           );
           yield* Effect.forkScoped(pump);
         }

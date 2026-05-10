@@ -1,6 +1,6 @@
 import { Effect, Stream } from "effect";
 import { use } from "react";
-import { Store } from "@storic/core";
+import { Store, getTag } from "@storic/core";
 import type { AnyTaggedStruct, Entity, EntityRecord, StoreError } from "@storic/core";
 import { useStoricRuntime, useStoricStore } from "./provider.tsx";
 import { useStreamState } from "./sync-external-store.ts";
@@ -36,8 +36,8 @@ export function useEntity<As extends AnyTaggedStruct>(
 export function useEntity(entity: Entity, id: string, opts?: UseEntityOptions): unknown {
   const runtime = useStoricRuntime();
   const store = useStoricStore();
-  const asTag = opts?.as ? (opts.as.fields._tag.schema.literal as string) : "__default__";
-  const entityTag = entity.schema.fields._tag.schema.literal as string;
+  const asTag = opts?.as ? getTag(opts.as) : "__default__";
+  const entityTag = getTag(entity.schema);
   const key = `entity:${entityTag}:${id}:${asTag}`;
 
   // ── First-render suspension ────────────────────────────────────────────
