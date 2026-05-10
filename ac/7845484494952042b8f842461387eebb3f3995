@@ -1,0 +1,35 @@
+packages/react/src/provider.tsx
+  s_f3bc912ed5f1cf::t_9776d1ce062e07 1
+  s_f3bc912ed5f1cf::t_ca5f23788bb424 44
+packages/react/src/use-effect-query.ts
+  s_f3bc912ed5f1cf::t_2607cd0ee4b11b 31-32
+  ai_agent 33
+  s_f3bc912ed5f1cf::t_26e82c5b7ed98e 36
+  s_f3bc912ed5f1cf::t_b56c1a661ec2db 1
+packages/react/src/use-entities.ts
+  s_f3bc912ed5f1cf::t_8918f77b5a66d5 38-39
+  s_f3bc912ed5f1cf::t_3d5f08a9dc7161 3
+packages/react/test/use-entity.test.tsx
+  s_f3bc912ed5f1cf::t_647f6ef885e6a0 2,4-6
+packages/core/src/store.ts
+  s_f3bc912ed5f1cf::t_4c174cb170b01c 351-360
+packages/react/src/use-entity.ts
+  s_f3bc912ed5f1cf::t_e4953e5cb78d3f 39-40
+  s_f3bc912ed5f1cf::t_a60f7b5fce557a 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "ac7845484494952042b8f842461387eebb3f3995",
+  "prompts": {},
+  "sessions": {
+    "s_f3bc912ed5f1cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e79ebeb2-e3b8-4bf2-8224-960ed98d7291",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Justin Bennett <git@just-be.dev>"
+    }
+  }
+}
