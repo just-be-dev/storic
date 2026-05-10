@@ -1,0 +1,43 @@
+packages/core/src/entity-bus.ts
+  s_2687ac4b90aa72::t_0a13384434143c 11,29-31
+  s_2687ac4b90aa72::t_6d20b126cde8d5 1-10,12-28,32
+packages/core/src/store.ts
+  s_2687ac4b90aa72::t_56554622cc242e 262-317
+  s_2687ac4b90aa72::t_2996b552bd7274 699-707,711-716
+  s_2687ac4b90aa72::t_35e5e845a76c98 421-429
+  s_2687ac4b90aa72::t_0b62d610016e68 630-638
+  s_2687ac4b90aa72::t_218cab3a777b6b 349-351,353
+  s_2687ac4b90aa72::t_9e761f3c1a3445 718-728,730,739-741,746-769,771-786,797-798
+  s_2687ac4b90aa72::t_ed4a1d7eacf4bd 731-738,742-745
+  s_2687ac4b90aa72::t_73bc801167ab1e 1,14-15
+  s_2687ac4b90aa72::t_fcdf69ac90f7a2 340-348,352,354-355
+packages/core/src/change-event.ts
+  s_2687ac4b90aa72::t_8859b067b58334 9-13,27-30
+  s_2687ac4b90aa72::t_1f64a884f721e9 1-8,14-26,31-43
+packages/core/src/persistence.ts
+  s_2687ac4b90aa72::t_b078e459252b39 1,3
+  s_2687ac4b90aa72::t_3aa9c8902a50c1 110-121
+packages/core/test/subscribe.test.ts
+  s_2687ac4b90aa72::t_d596d36a7d224d 1,3-20,22-42,44-60,62-71,73-92,94-98,100-120,122-123,125-146,148-161,163-183,185-187,189-190,192-198
+  s_2687ac4b90aa72::t_8666064f2bd3ba 21,61,93,121,147,184
+  s_2687ac4b90aa72::t_1ba853aa7cff61 43,72,99,124,162,191
+  s_2687ac4b90aa72::t_cc3a834cbbbb58 2
+packages/core/src/index.ts
+  s_2687ac4b90aa72::t_df152e6f8c9c89 5-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "3cfc045d143254bd070f11169c1076adc99d8edd",
+  "prompts": {},
+  "sessions": {
+    "s_2687ac4b90aa72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06004b02-91f8-467d-aeb2-8396c9611d2a",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Justin Bennett <git@just-be.dev>"
+    }
+  }
+}
