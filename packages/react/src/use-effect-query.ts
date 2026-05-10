@@ -42,7 +42,6 @@ export function useEffectQuery<A, E>(
       cancelled = true;
       runtime.runFork(Fiber.interrupt(fiber));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtime, ...deps]);
 
   return state;

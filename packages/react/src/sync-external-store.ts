@@ -70,7 +70,6 @@ export function useStreamState<A, E>(
         return snapshot;
       },
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
   return useSyncExternalStore(sub.subscribe, sub.getSnapshot, sub.getSnapshot);

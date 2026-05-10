@@ -730,6 +730,10 @@ export class Store extends Context.Service<Store, StoreShape>()("datastore/Store
         //   1. an immediate emission of the current value
         //   2. re-emissions on every relevant bus event (re-load is the
         //      simplest correct strategy and avoids per-event lens math)
+        //
+        // We acquire the bus subscription *before* running the initial
+        // reload, so events published during the reload window are buffered
+        // (not dropped) and drained immediately after the snapshot emits.
 
         const subscribeEntity = ((
           entity: Entity,
@@ -755,16 +759,19 @@ export class Store extends Context.Service<Store, StoreShape>()("datastore/Store
             ),
           );
 
-          const relevant = bus.stream.pipe(
-            Stream.filter((ev): boolean => {
-              if (ev.kind === "bulk") return tags.has(ev.type);
-              return ev.id === id;
-            }),
-          );
-
-          return Stream.concat(
-            Stream.fromEffect(reload),
-            relevant.pipe(Stream.mapEffect(() => reload)),
+          return Stream.unwrap(
+            Effect.map(bus.subscribe(), (live) =>
+              Stream.concat(
+                Stream.fromEffect(reload),
+                live.pipe(
+                  Stream.filter((ev): boolean => {
+                    if (ev.kind === "bulk") return tags.has(ev.type);
+                    return ev.id === id;
+                  }),
+                  Stream.mapEffect(() => reload),
+                ),
+              ),
+            ),
           );
         }) as StoreShape["subscribeEntity"];
 
@@ -781,17 +788,20 @@ export class Store extends Context.Service<Store, StoreShape>()("datastore/Store
 
           const reload = (loadEntities as any)(entity, opts);
 
-          const relevant = bus.stream.pipe(
-            Stream.filter((ev): boolean => {
-              if (ev.kind === "bulk") return tags.has(ev.type);
-              if (ev.kind === "delete") return ev.type === null || tags.has(ev.type);
-              return tags.has(ev.type);
-            }),
-          );
-
-          return Stream.concat(
-            Stream.fromEffect(reload),
-            relevant.pipe(Stream.mapEffect(() => reload)),
+          return Stream.unwrap(
+            Effect.map(bus.subscribe(), (live) =>
+              Stream.concat(
+                Stream.fromEffect(reload),
+                live.pipe(
+                  Stream.filter((ev): boolean => {
+                    if (ev.kind === "bulk") return tags.has(ev.type);
+                    if (ev.kind === "delete") return ev.type === null || tags.has(ev.type);
+                    return tags.has(ev.type);
+                  }),
+                  Stream.mapEffect(() => reload),
+                ),
+              ),
+            ),
           );
         }) as StoreShape["subscribeEntities"];
 

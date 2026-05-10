@@ -1,4 +1,7 @@
 import { Effect, Stream } from "effect";
+// NOTE: `effect/unstable/reactivity/Atom` is, as the path implies, an
+// unstable Effect API. It can break across minor Effect releases. Pin
+// `effect` carefully if you depend on the atom factories below.
 import * as Atom from "effect/unstable/reactivity/Atom";
 import type { AsyncResult } from "effect/unstable/reactivity/AsyncResult";
 import { Store } from "@storic/core";

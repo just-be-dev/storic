@@ -50,7 +50,6 @@ export function useEntityListener(
     return () => {
       runtime.runFork(Fiber.interrupt(fiber));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtime, store, entity, id, ...deps]);
 }
 
@@ -90,6 +89,5 @@ export function useEntitiesListener<E extends Entity>(
     return () => {
       runtime.runFork(Fiber.interrupt(fiber));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtime, store, entity, ...deps]);
 }
