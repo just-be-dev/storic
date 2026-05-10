@@ -709,9 +709,10 @@ export class Store extends Context.Service<Store, StoreShape>()("datastore/Store
 
         const deleteEntity = (id: string): Effect.Effect<void, PersistenceError> =>
           Effect.gen(function* () {
+            const stored = selfPublish ? yield* persistence.get(id) : null;
             yield* persistence.remove(id);
             if (selfPublish) {
-              yield* bus.publish({ kind: "delete", id, type: null });
+              yield* bus.publish({ kind: "delete", id, type: stored?.type ?? null });
             }
           });
 
