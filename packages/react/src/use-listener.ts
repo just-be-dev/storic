@@ -7,6 +7,11 @@ import { useStoricRuntime, useStoricStore } from "./provider.tsx";
  * Subscribe to a single entity's changes for side effects only — does NOT
  * cause the component to re-render. Useful for syncing entity state to
  * external systems (URL, analytics, websocket fan-out, etc).
+ *
+ * Note: `opts` is NOT auto-tracked. If you pass an `opts` object that
+ * varies across renders (e.g. swapping the `as` schema dynamically),
+ * include the relevant fields in `deps` yourself — otherwise the
+ * subscription will keep using the value from first mount.
  */
 export function useEntityListener<E extends Entity>(
   entity: E,
@@ -56,6 +61,12 @@ export function useEntityListener(
 /**
  * Subscribe to a query result for side effects only — does NOT cause the
  * component to re-render.
+ *
+ * Note: `opts` (filters / limit / offset) is NOT auto-tracked. If you pass
+ * an inline `opts` object that varies across renders, include the relevant
+ * fields in `deps` yourself (e.g. `[filterValue]`). Otherwise the
+ * subscription will silently keep running against the first-mount opts and
+ * `onChange` will fire for the wrong query.
  */
 export function useEntitiesListener<E extends Entity>(
   entity: E,
