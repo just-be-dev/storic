@@ -1,0 +1,27 @@
+packages/core/src/store.ts
+  s_f3bc912ed5f1cf::t_9628c0bee1a025 733-736,762-774,791-804
+packages/core/src/change-event.ts
+  s_f3bc912ed5f1cf::t_0ff840628a0039 9-12,17-23
+packages/react/src/cache.ts
+  s_f3bc912ed5f1cf::t_a1765f93b55ad9 6-13
+packages/core/src/entity-bus.ts
+  s_f3bc912ed5f1cf::t_f999398b546925 1,12-18,33-49
+packages/react/src/atom/factories.ts
+  s_f3bc912ed5f1cf::t_cda4b996f7b107 2-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "589f657a716914e7369678d6d6a5fb5a1862cf34",
+  "prompts": {},
+  "sessions": {
+    "s_f3bc912ed5f1cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e79ebeb2-e3b8-4bf2-8224-960ed98d7291",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Justin Bennett <git@just-be.dev>"
+    }
+  }
+}
