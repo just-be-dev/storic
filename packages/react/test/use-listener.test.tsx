@@ -33,14 +33,9 @@ describe("useEntityListener", () => {
       const seen: Array<string | null> = [];
 
       function TestView() {
-        useEntityListener(
-          Person,
-          id,
-          (record) => {
-            seen.push((record?.data as any)?.email ?? null);
-          },
-          [],
-        );
+        useEntityListener(Person, id, (record) => {
+          seen.push((record?.data as any)?.email ?? null);
+        });
         return null;
       }
 
@@ -77,14 +72,9 @@ describe("useEntitiesListener", () => {
     try {
       const lengths: Array<number> = [];
       function TestView() {
-        useEntitiesListener(
-          Person,
-          undefined,
-          (records) => {
-            lengths.push(records.length);
-          },
-          [],
-        );
+        useEntitiesListener(Person, undefined, (records) => {
+          lengths.push(records.length);
+        });
         return null;
       }
 
@@ -110,6 +100,58 @@ describe("useEntitiesListener", () => {
       await dispose();
     }
   });
+
+  test("re-subscribes when inline opts.filters change without explicit deps", async () => {
+    const { runtime, store, dispose } = await makeTestRuntime();
+    try {
+      await runtime.runPromise(
+        (store.saveEntity as any)(
+          Person,
+          { firstName: "Alpha", lastName: "1", email: "alpha@x.com" },
+          { as: PersonV1 },
+        ),
+      );
+      await runtime.runPromise(
+        (store.saveEntity as any)(
+          Person,
+          { firstName: "Beta", lastName: "2", email: "beta@x.com" },
+          { as: PersonV1 },
+        ),
+      );
+
+      const emails: Array<string> = [];
+
+      function TestView({ first }: { first: string }) {
+        useEntitiesListener(
+          Person,
+          { filters: [{ field: "firstName", op: "eq", value: first }], as: PersonV1 },
+          (records) => {
+            for (const r of records) emails.push((r.data as any).email);
+          },
+        );
+        return null;
+      }
+
+      const { rerender } = render(<TestView first="Alpha" />, { wrapper: withProvider(runtime) });
+
+      await waitFor(() => {
+        expect(emails).toContain("alpha@x.com");
+      });
+      expect(emails).not.toContain("beta@x.com");
+
+      // Change the filter — opts is a new inline object each render. The
+      // subscription must re-establish without the caller passing deps.
+      await act(async () => {
+        rerender(<TestView first="Beta" />);
+      });
+
+      await waitFor(() => {
+        expect(emails).toContain("beta@x.com");
+      });
+    } finally {
+      await dispose();
+    }
+  });
 });
 
 describe("listener teardown", () => {
@@ -120,14 +162,9 @@ describe("listener teardown", () => {
       const seen: Array<unknown> = [];
 
       function Listener() {
-        useEntityListener(
-          Person,
-          id,
-          (record) => {
-            seen.push(record);
-          },
-          [],
-        );
+        useEntityListener(Person, id, (record) => {
+          seen.push(record);
+        });
         return null;
       }
       function App() {
