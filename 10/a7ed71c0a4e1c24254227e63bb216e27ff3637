@@ -1,0 +1,25 @@
+packages/react/src/use-listener.ts
+  s_f3bc912ed5f1cf::t_1f39baf800bc1f 2-3,12-14,38-42,60-70,77-80,84,86-97,102-108,118-120,128-130
+  ai_agent 52
+packages/react/test/use-listener.test.tsx
+  s_f3bc912ed5f1cf::t_0e6312ced7e294 75-77
+  s_f3bc912ed5f1cf::t_cfa75023283285 103-154
+  s_f3bc912ed5f1cf::t_344ccafcaa7942 36-38
+  s_f3bc912ed5f1cf::t_3eaf7b329d8dd8 165-167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "10a7ed71c0a4e1c24254227e63bb216e27ff3637",
+  "prompts": {},
+  "sessions": {
+    "s_f3bc912ed5f1cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e79ebeb2-e3b8-4bf2-8224-960ed98d7291",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Justin Bennett <git@just-be.dev>"
+    }
+  }
+}
