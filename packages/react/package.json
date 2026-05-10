@@ -1,0 +1,63 @@
+{
+  "name": "@storic/react",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/just-be-dev/storic.git",
+    "directory": "packages/react"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./atom": {
+      "bun": "./src/atom/index.ts",
+      "import": "./dist/atom/index.js",
+      "types": "./dist/atom/index.d.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsgo --build",
+    "check": "tsgo --noEmit",
+    "test": "bun test"
+  },
+  "peerDependencies": {
+    "@effect/atom-react": "4.0.0-beta.64",
+    "@storic/core": "workspace:*",
+    "effect": "4.0.0-beta.64",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "@effect/atom-react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@effect/atom-react": "4.0.0-beta.64",
+    "@storic/core": "workspace:*",
+    "@storic/sql": "workspace:*",
+    "@effect/sql-sqlite-bun": "4.0.0-beta.64",
+    "@testing-library/react": "^16.3.0",
+    "@types/bun": "^1.3.10",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@typescript/native-preview": "catalog:",
+    "effect": "4.0.0-beta.64",
+    "happy-dom": "^20.0.0",
+    "@happy-dom/global-registrator": "^20.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

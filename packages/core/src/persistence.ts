@@ -1,5 +1,6 @@
-import { Effect, Context } from "effect";
+import { Effect, Context, Stream } from "effect";
 import type { PersistenceError } from "./errors.ts";
+import type { ChangeEvent, SubscribeSpec } from "./change-event.ts";
 
 // ─── Persistence Record Types ──────────────────────────────────────────────
 
@@ -106,6 +107,18 @@ export interface PersistenceShape {
 
   /** Delete a record by ID. */
   readonly remove: (id: string) => Effect.Effect<void, PersistenceError>;
+
+  /**
+   * Optional native change-notification stream. When present, the Store uses
+   * this as the single source of truth for change events and does NOT
+   * self-publish on its own mutations — the backend's emission is what
+   * consumers observe. When absent, the Store self-publishes after each
+   * mutation it performs.
+   *
+   * Implementations should emit a `ChangeEvent` for every successful write
+   * (local or external) that matches the given `spec`.
+   */
+  readonly subscribe?: (spec: SubscribeSpec) => Stream.Stream<ChangeEvent, PersistenceError>;
 }
 
 export class Persistence extends Context.Service<Persistence, PersistenceShape>()(

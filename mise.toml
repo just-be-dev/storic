@@ -60,6 +60,10 @@ run = "bun test packages/automerge"
 description = "Test @storic/cloudflare"
 run = "bun test packages/cloudflare"
 
+[tasks."test:react"]
+description = "Test @storic/react"
+run = "bun test packages/react"
+
 [tasks.example]
 description = "Run the schema-versioning example"
 run = "bun examples/schema-versioning-with-lenses.ts"

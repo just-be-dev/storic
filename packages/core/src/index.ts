@@ -2,6 +2,10 @@
 export { Store } from "./store.ts";
 export type { StoreShape, StoreError } from "./store.ts";
 
+// ─── Change Events ──────────────────────────────────────────────────────────
+export type { ChangeEvent, SubscribeSpec } from "./change-event.ts";
+export { EntityBus } from "./entity-bus.ts";
+
 // ─── Persistence ────────────────────────────────────────────────────────────
 export { Persistence } from "./persistence.ts";
 export type {

@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema, Context } from "effect";
+import { Effect, Layer, Schema, Context, Stream } from "effect";
 import {
   EntityNotFoundError,
   LensPathNotFoundError,
@@ -11,6 +11,8 @@ import { entitySchemas } from "./entity.ts";
 import { Persistence } from "./persistence.ts";
 import type { Filter, TypePatch } from "./persistence.ts";
 import { SchemaRegistry, getTag } from "./schema-registry.ts";
+import { EntityBus } from "./entity-bus.ts";
+import type { ChangeEvent } from "./change-event.ts";
 import type {
   AnyTaggedStruct,
   Entity,
@@ -257,6 +259,62 @@ export interface StoreShape {
 
   /** Delete an entity by ID. */
   readonly deleteEntity: (id: string) => Effect.Effect<void, PersistenceError>;
+
+  /**
+   * Subscribe to changes for a single entity by id. Emits the current value
+   * immediately, then re-emits whenever a relevant change occurs. Emits `null`
+   * when the entity is deleted or doesn't exist.
+   */
+  readonly subscribeEntity: {
+    <E extends Entity>(
+      entity: E,
+      id: string,
+      opts?: Record<string, never>,
+    ): Stream.Stream<
+      EntityRecord<E["schema"]> | null,
+      LensPathNotFoundError | TransformError | ValidationError | PersistenceError
+    >;
+
+    <As extends AnyTaggedStruct>(
+      entity: Entity,
+      id: string,
+      opts: { readonly as: As },
+    ): Stream.Stream<
+      EntityRecord<As> | null,
+      LensPathNotFoundError | TransformError | ValidationError | PersistenceError
+    >;
+  };
+
+  /**
+   * Subscribe to a query result. Emits the current list immediately, then
+   * re-emits whenever a record of the entity's type changes.
+   */
+  readonly subscribeEntities: {
+    <E extends Entity>(
+      entity: E,
+      opts?: {
+        readonly filters?: ReadonlyArray<Filter>;
+        readonly limit?: number;
+        readonly offset?: number;
+      },
+    ): Stream.Stream<
+      Array<EntityRecord<E["schema"]>>,
+      LensPathNotFoundError | TransformError | ValidationError | PersistenceError
+    >;
+
+    <As extends AnyTaggedStruct>(
+      entity: Entity,
+      opts: {
+        readonly filters?: ReadonlyArray<Filter>;
+        readonly limit?: number;
+        readonly offset?: number;
+        readonly as: As;
+      },
+    ): Stream.Stream<
+      Array<EntityRecord<As>>,
+      LensPathNotFoundError | TransformError | ValidationError | PersistenceError
+    >;
+  };
 }
 
 // ─── Store Service ──────────────────────────────────────────────────────────
@@ -278,6 +336,31 @@ export class Store extends Context.Service<Store, StoreShape>()("datastore/Store
       Store,
       Effect.gen(function* () {
         const persistence = yield* Persistence;
+
+        // ── Notification bus ────────────────────────────────────────────
+        // If the backend implements `subscribe`, use it as the source of
+        // truth and do NOT self-publish on mutations. Otherwise, run the
+        // self-publish path: bus is filled by Store after each mutation.
+        const bus = yield* EntityBus.make;
+        const selfPublish = persistence.subscribe === undefined;
+
+        if (!selfPublish) {
+          const sub = persistence.subscribe!({});
+          const pump: Effect.Effect<void, never, never> = sub.pipe(
+            Stream.runForEach((event: ChangeEvent) => bus.publish(event)),
+            Effect.catchCause((cause) =>
+              Effect.sync(() => {
+                if (typeof console !== "undefined") {
+                  console.warn(
+                    "[storic] backend change-stream pump failed; subscribers will stop receiving events",
+                    cause,
+                  );
+                }
+              }),
+            ),
+          );
+          yield* Effect.forkScoped(pump);
+        }
 
         // ── Flatten entities into schemas + lenses ──────────────────────
         const schemas: AnyTaggedStruct[] = [];
@@ -343,6 +426,15 @@ export class Store extends Context.Service<Store, StoreShape>()("datastore/Store
               type: tag,
               data: fullData,
             });
+
+            if (selfPublish) {
+              yield* bus.publish({
+                kind: "put",
+                id: stored.id,
+                type: stored.type,
+                record: stored,
+              });
+            }
 
             return {
               id: stored.id,
@@ -544,6 +636,15 @@ export class Store extends Context.Service<Store, StoreShape>()("datastore/Store
               data: newData,
             });
 
+            if (selfPublish) {
+              yield* bus.publish({
+                kind: "update",
+                id: updated.id,
+                type: updated.type,
+                record: updated,
+              });
+            }
+
             return {
               id: updated.id,
               data: updated.data as unknown as Schema.Schema.Type<AnyTaggedStruct>,
@@ -604,11 +705,105 @@ export class Store extends Context.Service<Store, StoreShape>()("datastore/Store
 
             if (patches.length === 0) return 0;
 
-            return yield* persistence.patch({ patches });
+            const affected = yield* persistence.patch({ patches });
+
+            if (selfPublish && affected > 0) {
+              for (const p of patches) {
+                yield* bus.publish({ kind: "bulk", type: p.type });
+              }
+            }
+
+            return affected;
           })) as StoreShape["patchEntities"];
 
         const deleteEntity = (id: string): Effect.Effect<void, PersistenceError> =>
-          persistence.remove(id);
+          Effect.gen(function* () {
+            const stored = selfPublish ? yield* persistence.get(id) : null;
+            yield* persistence.remove(id);
+            if (selfPublish) {
+              yield* bus.publish({ kind: "delete", id, type: stored?.type ?? null });
+            }
+          });
+
+        // ── Subscriptions ───────────────────────────────────────────────
+        // Each subscriber gets:
+        //   1. an immediate emission of the current value
+        //   2. re-emissions on every relevant bus event (re-load is the
+        //      simplest correct strategy and avoids per-event lens math)
+        //
+        // We acquire the bus subscription *before* running the initial
+        // reload, so events published during the reload window are buffered
+        // (not dropped) and drained immediately after the snapshot emits.
+
+        const subscribeEntity = ((
+          entity: Entity,
+          id: string,
+          opts?: { readonly as?: AnyTaggedStruct },
+        ) => {
+          const tags = new Set(entitySchemaTags.get(entity) ?? [getTag(entity.schema)]);
+
+          const loaded = (loadEntity as any)(entity, id, opts) as Effect.Effect<
+            EntityRecord<AnyTaggedStruct>,
+            | EntityNotFoundError
+            | LensPathNotFoundError
+            | TransformError
+            | ValidationError
+            | PersistenceError
+          >;
+          const reload: Effect.Effect<
+            EntityRecord<AnyTaggedStruct> | null,
+            LensPathNotFoundError | TransformError | ValidationError | PersistenceError
+          > = loaded.pipe(
+            Effect.catchTag("EntityNotFoundError", () =>
+              Effect.succeed(null as EntityRecord<AnyTaggedStruct> | null),
+            ),
+          );
+
+          return Stream.unwrap(
+            Effect.map(bus.subscribe(), (live) =>
+              Stream.concat(
+                Stream.fromEffect(reload),
+                live.pipe(
+                  Stream.filter((ev): boolean => {
+                    if (ev.kind === "bulk") return tags.has(ev.type);
+                    return ev.id === id;
+                  }),
+                  Stream.mapEffect(() => reload),
+                ),
+              ),
+            ),
+          );
+        }) as StoreShape["subscribeEntity"];
+
+        const subscribeEntities = ((
+          entity: Entity,
+          opts?: {
+            readonly filters?: ReadonlyArray<Filter>;
+            readonly limit?: number;
+            readonly offset?: number;
+            readonly as?: AnyTaggedStruct;
+          },
+        ) => {
+          const tags = new Set(entitySchemaTags.get(entity) ?? [getTag(entity.schema)]);
+
+          const reload = (loadEntities as any)(entity, opts);
+
+          return Stream.unwrap(
+            Effect.map(bus.subscribe(), (live) =>
+              Stream.concat(
+                Stream.fromEffect(reload),
+                live.pipe(
+                  Stream.filter((ev): boolean => {
+                    if (ev.kind === "bulk") return tags.has(ev.type);
+                    if (ev.kind === "delete") return ev.type === null || tags.has(ev.type);
+                    return tags.has(ev.type);
+                  }),
+                  Stream.mapEffect(() => reload),
+                ),
+              ),
+            ),
+          );
+        }) as StoreShape["subscribeEntities"];
 
         // ── Return service ──────────────────────────────────────────────
 
@@ -619,6 +814,8 @@ export class Store extends Context.Service<Store, StoreShape>()("datastore/Store
           updateEntity,
           patchEntities,
           deleteEntity,
+          subscribeEntity,
+          subscribeEntities,
         });
       }),
     );
