@@ -1,0 +1,21 @@
+.github/workflows/claude-code-review.yml
+  s_13813ee0656ee0::t_d1bbfcee1ae495 1-44
+.github/workflows/claude.yml
+  s_13813ee0656ee0::t_d1bbfcee1ae495 1-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "7a23b09756dbae15677ee29cb085144851033e4b",
+  "prompts": {},
+  "sessions": {
+    "s_13813ee0656ee0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "843ca5f3-36aa-49af-8e31-8740c52869df",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Justin Bennett <git@just-be.dev>"
+    }
+  }
+}
