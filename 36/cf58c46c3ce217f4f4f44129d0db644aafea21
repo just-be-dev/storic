@@ -1,0 +1,21 @@
+packages/react/package.json
+  s_af9f7ef2132cc2::t_071bbab0b042fb 3
+packages/core/package.json
+  s_af9f7ef2132cc2::t_ba337102349080 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "36cf58c46c3ce217f4f4f44129d0db644aafea21",
+  "prompts": {},
+  "sessions": {
+    "s_af9f7ef2132cc2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "571d3c60-676a-4459-9b0e-d766742aeb28",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Justin Bennett <git@just-be.dev>"
+    }
+  }
+}
